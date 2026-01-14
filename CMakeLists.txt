@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.31.6)
 project(mope_game_engine VERSION 0.1.0)
 
-
 option(
     MOPE_GAME_ENGINE_SHARED_LIB
     "Build as a shared library."
@@ -30,9 +29,6 @@ generate_export_header(
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/mope_game_engine/mope_game_engine_export.hxx"
 )
 
-add_subdirectory("include")
-add_subdirectory("src")
-
 target_sources(
     mope_game_engine
 
@@ -54,3 +50,7 @@ target_compile_definitions(
         GLAD_GLAPI_EXPORT_BUILD
         $<$<CONFIG:Debug>:DEBUG=1>
 )
+
+add_subdirectory("include")
+add_subdirectory("src")
+add_subdirectory("examples")
