@@ -1,0 +1,207 @@
+#pragma once
+
+#include "mope_game_engine/component.hxx"
+#include "mope_game_engine/iterable_box.hxx"
+#include "mope_game_engine/mope_game_engine_export.hxx"
+
+#include <concepts>
+#include <memory>
+#include <ranges>
+#include <typeindex>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace mope::detail
+{
+    class MOPE_GAME_ENGINE_EXPORT component_manager_base
+    {
+    public:
+        virtual ~component_manager_base() = default;
+
+        /// Remove the component managed by this from the given entity.
+        ///
+        /// This method is virtual because we need to be able to call it without
+        /// naming the component type.
+        ///
+        /// The base implementation is a no-op to support singleton components
+        /// without requiring a dynamic_cast.
+        ///
+        /// @param en The entity whose component to remove.
+        virtual void remove(entity en) {}
+    };
+
+    template <component Component>
+    class component_manager;
+
+    template <std::derived_from<singleton_component> Component>
+    class component_manager<Component> final : public component_manager_base
+    {
+    public:
+        template <typename T>
+            requires std::same_as<std::decay_t<T>, Component>
+        auto add_or_set(T&& t) -> Component*
+        {
+            m_data = std::forward<T>(t);
+            return &m_data;
+        }
+
+        auto get() -> Component*
+        {
+            return &m_data;
+        }
+
+    private:
+        Component m_data;
+    };
+
+    template <std::derived_from<entity_component> Component>
+    class component_manager<Component> final : public component_manager_base
+    {
+    public:
+        template <typename T>
+            requires std::same_as<std::remove_cvref_t<T>, Component>
+        auto add_or_set(T&& t) -> Component*
+        {
+            entity en = t.en;
+            if (auto iter = m_index_map.find(en); m_index_map.end() != iter) {
+                m_data[iter->second] = std::forward<T>(t);
+                return &m_data[iter->second];
+            }
+            else {
+                m_data.push_back(std::forward<T>(t));
+                m_index_map.insert({ en, m_data.size() - 1 });
+                return &m_data.back();
+            }
+        }
+
+        void remove(entity en) override
+        {
+            if (auto iter = m_index_map.find(en); m_index_map.end() != iter) {
+                using std::swap;
+                swap(m_data[iter->second], m_data.back());
+                m_index_map[m_data.back().en] = iter->second;
+                m_data.pop_back();
+                m_index_map.erase(iter);
+            }
+        }
+
+        auto get(entity en) -> Component*
+        {
+            if (auto iter = m_index_map.find(en); m_index_map.end() != iter) {
+                return &m_data[iter->second];
+            }
+            else {
+                return nullptr;
+            }
+        }
+
+        auto all()
+        {
+            return m_data | std::views::all;
+        }
+
+    private:
+        std::vector<Component> m_data;
+        std::unordered_map<entity, std::size_t> m_index_map;
+    };
+}
+
+namespace mope
+{
+    class game_system_base;
+
+    class MOPE_GAME_ENGINE_EXPORT ecs_manager : public singleton_component
+    {
+    public:
+        ecs_manager();
+        virtual ~ecs_manager();
+        ecs_manager(ecs_manager&&);
+        auto operator=(ecs_manager&&) -> ecs_manager&;
+        ecs_manager(ecs_manager const&) = delete;
+        auto operator=(ecs_manager const&) -> ecs_manager & = delete;
+
+        auto create_entity() -> entity;
+        void destroy_entity(entity e);
+
+        template <
+            typename ComponentRef,
+            component Component = std::remove_cvref_t<ComponentRef>>
+        auto set_component(ComponentRef&& c) -> Component*
+        {
+            return ensure_component_manager<Component>()
+                .add_or_set(std::forward<ComponentRef>(c));
+        }
+
+        template <typename... ComponentRef>
+        auto set_components(ComponentRef&&... cs)
+        {
+            (set_component(std::forward<ComponentRef>(cs)), ...);
+        }
+
+        template <std::derived_from<singleton_component> Component>
+        auto get_component() -> Component*
+        {
+            if constexpr (std::derived_from<Component, ecs_manager>) {
+                return static_cast<Component*>(this);
+            }
+            else {
+                return ensure_component_manager<Component>().get();
+            }
+        }
+
+        template <std::derived_from<entity_component> Component>
+        auto get_component(entity en) -> Component*
+        {
+            return ensure_component_manager<Component>().get(en);
+        }
+
+        template <std::derived_from<singleton_component> Component>
+        auto get_components()
+        {
+            return iterable_box{ get_component<Component>() };
+        }
+
+        template <std::derived_from<entity_component> Component>
+        auto get_components()
+        {
+            return ensure_component_manager<Component>().all();
+        }
+
+        void add_game_system(std::unique_ptr<game_system_base> system);
+
+        template <typename System, typename... Args>
+        void emplace_game_system(Args&&... args)
+        {
+            add_game_system(std::make_unique<System>(std::forward<Args>(args)...));
+        }
+
+        void run_systems(double time_step);
+
+    private:
+        template <component Component>
+        auto ensure_component_manager() -> detail::component_manager<Component>&
+        {
+            auto type_idx = std::type_index{ typeid(Component) };
+            auto iter = m_component_managers.find(type_idx);
+            if (m_component_managers.end() == iter) {
+                iter = m_component_managers.insert(
+                    { type_idx, std::make_unique<detail::component_manager<Component>>() }
+                ).first;
+            }
+            // Other code may leave empty unique_ptrs in the map, by using the
+            // subscript operator, so we want to check for both missing AND
+            // nullptr.
+            else if (!iter->second) {
+                iter->second = std::make_unique<detail::component_manager<Component>>();
+            }
+            return static_cast<detail::component_manager<Component>&>(*iter->second);
+        }
+
+        entity m_next_entity;
+        std::unordered_map<std::type_index, std::unique_ptr<detail::component_manager_base>>
+            m_component_managers;
+        std::vector<std::unique_ptr<game_system_base>> m_game_systems;
+    };
+}
