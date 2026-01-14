@@ -1,0 +1,3 @@
+[submodule "include/mope_vec"]
+	path = include/mope_vec
+	url = git@github.com:mope-life/mope_vec
