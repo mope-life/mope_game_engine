@@ -15,14 +15,15 @@ namespace mope::detail
     template <component Component, component C0>
     auto get_single_component_helper(ecs_manager& ecs, C0 const& c0) -> Component*
     {
-        if constexpr (std::derived_from<Component, singleton_component>) {
+        if constexpr (derived_from_singleton_component<Component>) {
             return ecs.get_component<Component>();
         }
         else {
             static_assert(
-                std::derived_from<C0, entity_component>,
+                derived_from_entity_component<C0>,
                 "Entity components may not be used in a system where the primary component is a singleton. "
-                "Reorder your components such that an entity component is the first parameter.");
+                "Reorder your components such that an entity component is the first parameter."
+            );
 
             return ecs.get_component<Component>(c0.en);
         }
@@ -45,8 +46,8 @@ namespace mope::detail
     };
 
     template <
-        std::derived_from<entity_component> PrimaryComponent,
-        std::derived_from<entity_component>... AdditionalComponents>
+        derived_from_entity_component PrimaryComponent,
+        derived_from_entity_component... AdditionalComponents>
     struct additional_component_view<relationship<PrimaryComponent, AdditionalComponents...>>
     {
         template <component Ignored>

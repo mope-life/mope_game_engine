@@ -2,6 +2,7 @@ target_sources(
     pong
 
     PRIVATE
+        "future.hxx"
         "glfw.hxx" "glfw.cxx"
         "pong.hxx" "pong.cxx"
 )

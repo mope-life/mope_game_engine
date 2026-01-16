@@ -1,5 +1,6 @@
 #include "pong.hxx"
 
+#include "future.hxx"
 #include "glfw.hxx"
 #include "mope_game_engine/collisions.hxx"
 #include "mope_game_engine/component.hxx"
@@ -141,35 +142,35 @@ namespace
                 // The nested range is single-pass (std::ranges::input_range) only.
                 // So we need to cache the elements in case we need to make multiple
                 // passes.
-                m_collider_cache.assign_range(collider_components);
+                future::assign_range(m_collider_cache, collider_components);
 
                 double remaining_time = time_step;
 
                 do {
-                    m_collision_cache.assign_range(
+                    future::assign_range(
+                        m_collision_cache,
                         m_collider_cache
-                        | std::views::enumerate
-                        | std::views::transform([&ball_transform, &ball](auto&& pair)
-                            {
-                                auto&& [i, collider_pair] = pair;
-                                auto&& collider_transform = collider_pair.second;
-                                return std::make_pair(
-                                    i,
-                                    mope::axis_aligned_object_collision(
-                                        ball_transform.position(),
-                                        ball_transform.size(),
-                                        ball.velocity,
-                                        collider_transform.position(),
-                                        collider_transform.size()
-                                    ));
-                            })
-                        | std::views::filter([remaining_time](auto&& pair)
-                            {
-                                auto& collision = pair.second;
-                                return collision.has_value()
-                                    && !std::signbit(collision->contact_time)
-                                    && collision->contact_time < remaining_time;
-                            })
+                            | std::views::enumerate
+                            | std::views::transform([&ball_transform, &ball](auto&& pair) {
+                                  auto&& [i, collider_pair] = pair;
+                                  auto&& collider_transform = collider_pair.second;
+                                  return std::make_pair(
+                                      i,
+                                      mope::axis_aligned_object_collision(
+                                          ball_transform.position(),
+                                          ball_transform.size(),
+                                          ball.velocity,
+                                          collider_transform.position(),
+                                          collider_transform.size()
+                                      )
+                                  );
+                              })
+                            | std::views::filter([remaining_time](auto&& pair) {
+                                  auto& collision = pair.second;
+                                  return collision.has_value()
+                                      && !std::signbit(collision->contact_time)
+                                      && collision->contact_time < remaining_time;
+                              })
                     );
 
                     if (!m_collision_cache.empty()) {
