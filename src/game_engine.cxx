@@ -1,6 +1,8 @@
 #include "mope_game_engine/game_engine.hxx"
 
 #include "glad/glad.h"
+#include "mope_game_engine/components/input_state.hxx"
+#include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_engine_error.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_window.hxx"
@@ -17,7 +19,7 @@
 #include <utility>
 #include <vector>
 
- #define LOG_FPS 1
+ #define LOG_FPS true
 
 namespace
 {
@@ -61,6 +63,7 @@ namespace
 mope::game_engine::game_engine(std::shared_ptr<I_logger> logger)
     : m_logger{ std::move(logger) }
     , m_scenes{ }
+    , m_input_state{ }
     , m_ticktime{ 0.0 }
     , m_default_texture{ }
 {
@@ -95,6 +98,21 @@ void mope::game_engine::run(I_game_window& window)
 
     prepare_gl_resources();
 
+    // Set the initial client and input state.
+    auto previous_key_states = std::bitset<256>{};
+    m_input_state.held_keys = previous_key_states;
+    m_input_state.pressed_keys = previous_key_states;
+    m_input_state.released_keys = previous_key_states;
+    m_input_state.cursor_deltas = { 0, 0 };
+
+    window.process_inputs();
+    m_input_state.cursor_position = window.cursor_pos();
+    m_input_state.client_size = window.client_size();
+
+    for (auto& scene : m_scenes) {
+        scene->set_external_component(&m_input_state);
+    }
+
     using seconds = std::chrono::duration<double, std::ratio<1, 1>>;
     using clock = std::chrono::steady_clock;
 
@@ -107,18 +125,16 @@ void mope::game_engine::run(I_game_window& window)
     auto tick_counter = 0;
 #endif
 
-    auto previous_key_states = std::bitset<256>{ 0 };
-    auto held_keys = previous_key_states;
-    auto pressed_keys = previous_key_states;
-    auto released_keys = previous_key_states;
-
+    // We will stay in the loop until the window confirms that it's time to
+    // close. This likely but not necessarily comes just after we call
+    // window.close().
     while (!window.wants_to_close()) {
         // Process inputs from the window as frequently as possible.
         window.process_inputs();
 
-        held_keys = window.key_states();
-        pressed_keys |= held_keys & ~previous_key_states;
-        released_keys |= previous_key_states & ~held_keys;
+        m_input_state.held_keys = window.key_states();
+        m_input_state.pressed_keys |= m_input_state.held_keys & ~previous_key_states;
+        m_input_state.released_keys |= ~m_input_state.held_keys & previous_key_states;
 
         auto t = clock::now();
         auto delta_seconds = std::chrono::duration_cast<seconds>(t - t0).count();
@@ -131,38 +147,30 @@ void mope::game_engine::run(I_game_window& window)
             // Cache these since they are virtual function calls that have to
             // perform an unknown amount of work, and won't change in between
             // ticks / scenes.
-            auto cursor_position = window.cursor_pos();
-            auto cursor_deltas = window.cursor_deltas();
-            auto client_size = window.client_size();
+            m_input_state.cursor_position = window.cursor_pos();
+            m_input_state.cursor_deltas = window.cursor_deltas();
+            m_input_state.client_size = window.client_size();
 
             // Tick each window for each time step that has passed.
             // TODO: Avoid death spiral in case a game update takes longer than m_ticktime.
-            while (accumulator >= dt) {
+            do {
                 for (auto&& scene : m_scenes) {
-                    // Give the scene the most updated input / client data.
-                    scene->pressed_keys = pressed_keys;
-                    scene->released_keys = released_keys;
-                    scene->held_keys = held_keys;
-                    scene->cursor_position = cursor_position;
-                    scene->cursor_deltas = cursor_deltas;
-                    scene->client_size = client_size;
-
                     scene->tick(*this, dt);
                 }
 
                 // Only send "pressed" and "released" states once, even if we
                 // are processing multiple ticks.
-                pressed_keys.reset();
-                released_keys.reset();
+                m_input_state.pressed_keys.reset();
+                m_input_state.released_keys.reset();
 
                 accumulator -= dt;
 
 #if defined(LOG_FPS) && LOG_FPS
                 ++tick_counter;
 #endif
-            }
+            } while (accumulator >= dt);
 
-            previous_key_states = std::move(held_keys);
+            previous_key_states = m_input_state.held_keys;
         }
 
 #if defined(LOG_FPS) && LOG_FPS

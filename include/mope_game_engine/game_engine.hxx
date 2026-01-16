@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mope_game_engine/components/input_state.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_game_engine/texture.hxx"
 
@@ -80,6 +81,7 @@ namespace mope
         std::shared_ptr<I_logger> m_logger;
 
         std::vector<std::unique_ptr<game_scene>> m_scenes;
+        input_state m_input_state;
         double m_ticktime;
 
         gl::texture m_default_texture;

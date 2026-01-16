@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace mope::detail
@@ -38,22 +39,66 @@ namespace mope::detail
     template <std::derived_from<singleton_component> Component>
     class component_manager<Component> final : public component_manager_base
     {
+        static constexpr struct
+        {
+            static auto operator()(std::monostate) -> Component*
+            {
+                return nullptr;
+            }
+
+            static auto operator()(Component& data) -> Component*
+            {
+                return &data;
+            }
+
+            static auto operator()(Component* data) -> Component*
+            {
+                return data;
+            }
+        } get_visitor;
+
     public:
+        component_manager()
+            : m_data{ }
+        {
+        }
+
+        component_manager(Component data)
+            : m_data{ std::move(data) }
+        {
+        }
+
+        component_manager(Component* external_data)
+            : m_data{ external_data }
+        {
+        }
+
         template <typename T>
-            requires std::same_as<std::decay_t<T>, Component>
+            requires std::same_as<std::remove_cvref_t<T>, Component>
         auto add_or_set(T&& t) -> Component*
         {
             m_data = std::forward<T>(t);
-            return &m_data;
+            return std::get_if<Component>(&m_data);
+        }
+
+        auto add_or_set(Component* external_data) -> Component*
+        {
+            m_data = external_data;
+            return *std::get_if<Component*>(&m_data);
         }
 
         auto get() -> Component*
         {
-            return &m_data;
+            return std::visit(get_visitor, m_data);
+        }
+
+        auto all()
+        {
+            return iterable_box{ get() };
         }
 
     private:
-        Component m_data;
+        std::variant<std::monostate, Component, Component*> m_data;
     };
 
     template <std::derived_from<entity_component> Component>
@@ -140,15 +185,24 @@ namespace mope
             (set_component(std::forward<ComponentRef>(cs)), ...);
         }
 
+        /// Add a singleton component that has a lifetime managed separately
+        /// from the @ref ecs_manager.
+        template <std::derived_from<singleton_component> Component>
+        auto set_external_component(Component* component) -> Component*
+        {
+            return ensure_component_manager<Component>().add_or_set(component);
+        }
+
         template <std::derived_from<singleton_component> Component>
         auto get_component() -> Component*
         {
-            if constexpr (std::derived_from<Component, ecs_manager>) {
-                return static_cast<Component*>(this);
-            }
-            else {
-                return ensure_component_manager<Component>().get();
-            }
+            // If the requested singleton is a class derived from ecs_manager,
+            // ensure_component_manager() will return an ecs_manager instead of
+            // the derived class. Therefore, we have to cast the pointer
+            // returned by component_manager::get() back to the derived class.
+            return static_cast<Component*>(
+                ensure_component_manager<Component>().get()
+            );
         }
 
         template <std::derived_from<entity_component> Component>
@@ -157,13 +211,7 @@ namespace mope
             return ensure_component_manager<Component>().get(en);
         }
 
-        template <std::derived_from<singleton_component> Component>
-        auto get_components()
-        {
-            return iterable_box{ get_component<Component>() };
-        }
-
-        template <std::derived_from<entity_component> Component>
+        template <component Component>
         auto get_components()
         {
             return ensure_component_manager<Component>().all();
@@ -177,26 +225,36 @@ namespace mope
             add_game_system(std::make_unique<System>(std::forward<Args>(args)...));
         }
 
+    protected:
         void run_systems(double time_step);
 
     private:
+        // Users are expected to derive their scenes from `game_scene`, which is
+        // in turn derived from `ecs_manager`. We we will add the `ecs_manager`
+        // component once; this facilitates returning that component as whatever
+        // derived class the user requests.
         template <component Component>
-        auto ensure_component_manager() -> detail::component_manager<Component>&
+        using ManagedComponent = std::conditional_t<std::derived_from<Component, ecs_manager>, ecs_manager, Component>;
+
+        template <component Component>
+        auto ensure_component_manager() -> detail::component_manager<ManagedComponent<Component>>&
         {
-            auto type_idx = std::type_index{ typeid(Component) };
+            using managed_component = ManagedComponent<Component>;
+
+            auto type_idx = std::type_index{ typeid(managed_component) };
             auto iter = m_component_managers.find(type_idx);
             if (m_component_managers.end() == iter) {
                 iter = m_component_managers.insert(
-                    { type_idx, std::make_unique<detail::component_manager<Component>>() }
+                    { type_idx, std::make_unique<detail::component_manager<managed_component>>() }
                 ).first;
             }
-            // Other code may leave empty unique_ptrs in the map, by using the
+            // Other code may leave empty unique_ptrs in the map by using the
             // subscript operator, so we want to check for both missing AND
             // nullptr.
             else if (!iter->second) {
-                iter->second = std::make_unique<detail::component_manager<Component>>();
+                iter->second = std::make_unique<detail::component_manager<managed_component>>();
             }
-            return static_cast<detail::component_manager<Component>&>(*iter->second);
+            return static_cast<detail::component_manager<managed_component>&>(*iter->second);
         }
 
         entity m_next_entity;

@@ -1,3 +1,4 @@
+#include "mope_game_engine/component.hxx"
 #include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_system.hxx"
 
@@ -8,7 +9,9 @@ mope::ecs_manager::ecs_manager()
     : m_next_entity { 0 }
     , m_component_managers{ }
     , m_game_systems{ }
-{ }
+{
+    set_external_component(this);
+}
 
 mope::ecs_manager::~ecs_manager() = default;
 mope::ecs_manager::ecs_manager(ecs_manager&&) = default;

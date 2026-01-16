@@ -78,17 +78,16 @@ namespace
         } collision_type;
     };
 
-    class player_movement : public mope::game_system<player_component, mope::transform_component, pong>
+    class player_movement : public mope::game_system<player_component, mope::transform_component, mope::input_state>
     {
         void process_tick(double time_step, component_view components) override
         {
-            for (auto&& [player, transform, scene] : components) {
+            for (auto&& [player, transform, inputs] : components) {
                 auto previous_y = transform.position().y();
                 auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
-                auto y_delta = scene.cursor_deltas.y();
-                auto screen_height = scene.client_size.y();
+                auto y_delta = inputs.cursor_deltas.y();
                 auto new_y = std::max(
-                    std::min(y_delta + previous_y, screen_height - min_showing),
+                    std::min(y_delta + previous_y, OrthoHeight - min_showing),
                     min_showing - transform.size().y()
                 );
                 transform.set_y(new_y);
@@ -278,12 +277,12 @@ namespace
         }
     };
 
-    class exit_on_escape : public mope::game_system<pong>
+    class exit_on_escape : public mope::game_system<mope::input_state, pong>
     {
         void process_tick(double time_step, component_view components)
         {
-            for (auto&& scene : components) {
-                if (scene.pressed_keys.test(mope::glfw::ESCAPE)) {
+            for (auto&& [inputs, scene] : components) {
+                if (inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
                     scene.set_done();
                 }
             }
