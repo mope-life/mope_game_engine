@@ -10,17 +10,12 @@
 #include <memory>
 
 mope::game_scene::game_scene()
-    : ecs_manager{}
-    , pressed_keys{ }
-    , released_keys{ }
-    , held_keys{ }
-    , cursor_position{ }
-    , cursor_deltas{ }
-    , client_size{ }
+    : ecs_manager{ }
     , m_sprite_renderer{ }
     , m_initialized{ false }
     , m_done{ false }
-{ }
+{
+}
 
 mope::game_scene::~game_scene() = default;
 
