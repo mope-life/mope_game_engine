@@ -39,7 +39,7 @@ namespace mope::detail
     template <derived_from_singleton_component Component>
     class component_manager<Component> final : public component_manager_base
     {
-        static constexpr struct
+        struct visitor
         {
             static auto operator()(std::monostate) -> Component*
             {
@@ -55,7 +55,7 @@ namespace mope::detail
             {
                 return data;
             }
-        } get_visitor;
+        };
 
     public:
         component_manager()
@@ -89,7 +89,7 @@ namespace mope::detail
 
         auto get() -> Component*
         {
-            return std::visit(get_visitor, m_data);
+            return std::visit(visitor{}, m_data);
         }
 
         auto all()
