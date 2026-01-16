@@ -39,24 +39,6 @@ namespace mope::detail
     template <derived_from_singleton_component Component>
     class component_manager<Component> final : public component_manager_base
     {
-        struct visitor
-        {
-            static auto operator()(std::monostate) -> Component*
-            {
-                return nullptr;
-            }
-
-            static auto operator()(Component& data) -> Component*
-            {
-                return &data;
-            }
-
-            static auto operator()(Component* data) -> Component*
-            {
-                return data;
-            }
-        };
-
     public:
         component_manager()
             : m_data{ }
@@ -89,6 +71,24 @@ namespace mope::detail
 
         auto get() -> Component*
         {
+            struct visitor
+            {
+                static auto operator()(std::monostate) -> Component*
+                {
+                    return nullptr;
+                }
+
+                static auto operator()(Component& data) -> Component*
+                {
+                    return &data;
+                }
+
+                static auto operator()(Component* data) -> Component*
+                {
+                    return data;
+                }
+            };
+
             return std::visit(visitor{}, m_data);
         }
 
