@@ -36,7 +36,7 @@ namespace mope::detail
     template <component Component>
     class component_manager;
 
-    template <std::derived_from<singleton_component> Component>
+    template <derived_from_singleton_component Component>
     class component_manager<Component> final : public component_manager_base
     {
         static constexpr struct
@@ -101,7 +101,7 @@ namespace mope::detail
         std::variant<std::monostate, Component, Component*> m_data;
     };
 
-    template <std::derived_from<entity_component> Component>
+    template <derived_from_entity_component Component>
     class component_manager<Component> final : public component_manager_base
     {
     public:
@@ -187,13 +187,13 @@ namespace mope
 
         /// Add a singleton component that has a lifetime managed separately
         /// from the @ref ecs_manager.
-        template <std::derived_from<singleton_component> Component>
+        template <derived_from_singleton_component Component>
         auto set_external_component(Component* component) -> Component*
         {
             return ensure_component_manager<Component>().add_or_set(component);
         }
 
-        template <std::derived_from<singleton_component> Component>
+        template <derived_from_singleton_component Component>
         auto get_component() -> Component*
         {
             // If the requested singleton is a class derived from ecs_manager,
@@ -205,7 +205,7 @@ namespace mope
             );
         }
 
-        template <std::derived_from<entity_component> Component>
+        template <derived_from_entity_component Component>
         auto get_component(entity en) -> Component*
         {
             return ensure_component_manager<Component>().get(en);

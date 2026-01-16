@@ -41,17 +41,6 @@ namespace mope
         entity en;
     };
 
-    /// Generic representation of a relationship between components.
-    ///
-    /// This struct doesn't really mean anything on its own. It can be used as
-    /// template arguments in a @ref game_system to query for a sub-view of
-    /// components, not tied to the same entity as the other
-    /// @ref entity_components in the query.
-    template <std::derived_from<entity_component>... RelatedComponents>
-    struct relationship final
-    {
-    };
-
     /// A component not attached to any entity.
     ///
     /// A singleton component is meant to hold data accessible to any system,
@@ -63,13 +52,39 @@ namespace mope
     {
     };
 
+    template <typename T>
+    concept derived_from_singleton_component
+        = std::derived_from<T, singleton_component>
+        && !std::derived_from<T, entity_component>;
+
+    template <typename T>
+    concept derived_from_entity_component
+        = std::derived_from<T, entity_component>
+        && !std::derived_from<T, singleton_component>;
+
     /// Concept describing a component in the ECS architecture.
     ///
     /// Every component is either a singleton XOR an entity component.
+    ///
+    /// NOTE: Don't try to simplify this. MSVC accepts
+    /// ```
+    ///     std::derived_from<T, singleton_component> != std::derived_from<T, entity_component>
+    /// ```
+    /// but GCC does not.
     template <typename T>
-    concept component =
-        std::derived_from<T, singleton_component>
-        != std::derived_from<T, entity_component>;
+    concept component
+        = derived_from_singleton_component<T> || derived_from_entity_component<T>;
+
+    /// Generic representation of a relationship between components.
+    ///
+    /// This struct doesn't really mean anything on its own. It can be used as
+    /// template arguments in a @ref game_system to query for a sub-view of
+    /// components, not tied to the same entity as the other
+    /// @ref entity_components in the query.
+    template <derived_from_entity_component... RelatedComponents>
+    struct relationship final
+    {
+    };
 
     /// Concept describing what can be requested in @ref game_system queries.
     template <typename T>
