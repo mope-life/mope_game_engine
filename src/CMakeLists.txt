@@ -5,7 +5,6 @@ target_sources(
         "glad/glad.c"
         "buffer_object.hxx" "buffer_object.cxx"
         "collisions.cxx"
-        "ecs_manager.cxx"
         "game_engine.cxx"
         "game_scene.cxx"
         "resource_id.cxx"

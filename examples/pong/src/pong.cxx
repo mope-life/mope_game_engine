@@ -4,9 +4,9 @@
 #include "glfw.hxx"
 #include "mope_game_engine/collisions.hxx"
 #include "mope_game_engine/component.hxx"
+#include "mope_game_engine/components/input_state.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
-#include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
@@ -81,9 +81,9 @@ namespace
 
     class player_movement : public mope::game_system<player_component, mope::transform_component, mope::input_state>
     {
-        void process_tick(double time_step, component_view components) override
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [player, transform, inputs] : components) {
+            for (auto&& [player, transform, inputs] : components(scene)) {
                 auto previous_y = transform.position().y();
                 auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
                 auto y_delta = inputs.cursor_deltas.y();
@@ -101,9 +101,9 @@ namespace
         mope::transform_component,
         mope::relationship<ball_component, mope::transform_component>>
     {
-        void process_tick(double time_step, component_view components)
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [opponent, opponent_transform, ball_components] : components) {
+            for (auto&& [opponent, opponent_transform, ball_components] : components(scene)) {
                 for (auto&& [ball, ball_transform] : ball_components) {
                     auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
                     auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
@@ -136,9 +136,9 @@ namespace
             std::size_t,
             std::optional<mope::collision>>> m_collision_cache;
 
-        void process_tick(double time_step, component_view components) override
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [ball, ball_transform, collider_components] : components) {
+            for (auto&& [ball, ball_transform, collider_components] : components(scene)) {
                 // The nested range is single-pass (std::ranges::input_range) only.
                 // So we need to cache the elements in case we need to make multiple
                 // passes.
@@ -214,9 +214,9 @@ namespace
         mope::relationship<player_score_component>,
         mope::relationship<opponent_score_component>>
     {
-        void process_tick(double time_step, component_view components) override
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [ball, transform, player_score_view, opponent_score_view] : components) {
+            for (auto&& [ball, transform, player_score_view, opponent_score_view] : components(scene)) {
                 if (transform.x_position() > OrthoWidth) {
                     for (auto&& player_score : player_score_view) {
                         ++player_score.score;
@@ -233,11 +233,11 @@ namespace
         }
     };
 
-    class reset_game : public mope::game_system<ball_component, pong>
+    class reset_game : public mope::game_system<ball_component>
     {
-        void process_tick(double time_step, component_view components) override
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [ball, scene] : components) {
+            for (auto&& ball : components(scene)) {
                 if (ball.out_of_bounds) {
                     ball.out_of_bounds = false;
                     ball.velocity = {
@@ -246,29 +246,31 @@ namespace
                         0.0f
                     };
 
+                    auto& entities = static_cast<pong&>(scene);
+
                     scene.set_components(
                         mope::transform_component{
-                            scene.player,
+                            entities.player,
                             { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
                             { PaddleWidth, PaddleHeight, 1.0f }
                         },
                         mope::transform_component{
-                            scene.opponent,
+                            entities.opponent,
                             { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
                             { PaddleWidth, PaddleHeight, 1.0f }
                         },
                         mope::transform_component{
-                            scene.ball,
+                            entities.ball,
                             { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
                             { PaddleWidth, PaddleWidth, 1.0f }
                         },
                         mope::transform_component{
-                            scene.top,
+                            entities.top,
                             { -0.5f * OrthoWidth, -1.0f, 0.0f },
                             { 2.0f * OrthoWidth, 1.0f, 1.0f }
                         },
                         mope::transform_component{
-                            scene.bottom,
+                            entities.bottom,
                             { -0.5f * OrthoWidth, OrthoHeight, 0.0f },
                             { 2.0f * OrthoWidth, 1.0f, 1.0f }
                         }
@@ -278,11 +280,11 @@ namespace
         }
     };
 
-    class exit_on_escape : public mope::game_system<mope::input_state, pong>
+    class exit_on_escape : public mope::game_system<mope::input_state>
     {
-        void process_tick(double time_step, component_view components)
+        void process_tick(mope::game_scene& scene, double time_step) override
         {
-            for (auto&& [inputs, scene] : components) {
+            for (auto&& inputs : components(scene)) {
                 if (inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
                     scene.set_done();
                 }

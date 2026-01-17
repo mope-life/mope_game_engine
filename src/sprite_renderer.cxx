@@ -3,7 +3,7 @@
 #include "glad/glad.h"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
-#include "mope_game_engine/ecs_manager.hxx"
+#include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
 #include "mope_vec/mope_vec.hxx"
 #include "vao.hxx"
@@ -80,19 +80,19 @@ void main()
     m_ebo.fill(indices);
 }
 
-void mope::sprite_renderer::pre_tick(ecs_manager& ecs)
+void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
-    for (auto&& [sprite, transform] : 
-        detail::get_all_components_helper<sprite_component, transform_component>(ecs))
+    for (auto&& [sprite, transform]
+        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
     {
         transform.save_model();
     }
 }
 
-void mope::sprite_renderer::render(ecs_manager& ecs, double alpha)
+void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
-    for (auto&& [sprite, transform] :
-        detail::get_all_components_helper<sprite_component, transform_component>(ecs))
+    for (auto&& [sprite, transform]
+        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
     {
         sprite.texture.bind();
         m_shader.set_uniform("u_model", transform.blend(alpha));

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mope_game_engine/component.hxx"
 #include "mope_game_engine/components/input_state.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_game_engine/texture.hxx"
