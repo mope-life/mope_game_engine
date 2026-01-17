@@ -12,7 +12,6 @@ target_sources(
         "mope_game_engine/components/transform.hxx"
         "mope_game_engine/collisions.hxx"
         "mope_game_engine/component.hxx"
-        "mope_game_engine/ecs_manager.hxx"
         "mope_game_engine/game_engine.hxx"
         "mope_game_engine/game_scene.hxx"
         "mope_game_engine/game_system.hxx"

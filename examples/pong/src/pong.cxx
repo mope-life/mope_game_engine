@@ -7,7 +7,6 @@
 #include "mope_game_engine/components/input_state.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
-#include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_engine.hxx"
+#include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/iterable_box.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 
@@ -17,7 +17,7 @@ namespace mope::detail
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
     struct component_gatherer
     {
-        static auto gather(ecs_manager& ecs);
+        static auto gather(game_scene& scene);
     };
 
     template <component_or_relationship ComponentOrRelationship>
@@ -27,10 +27,10 @@ namespace mope::detail
     struct additional_component_gatherer<Component>
     {
         template <component PrimaryComponent>
-        static auto gather(ecs_manager& ecs, PrimaryComponent const& c0)
+        static auto gather(game_scene& scene, PrimaryComponent const& c0)
         {
             if constexpr (derived_from_singleton_component<Component>) {
-                return ecs.get_component<Component>();
+                return scene.get_component<Component>();
             }
             else {
                 static_assert(
@@ -38,7 +38,7 @@ namespace mope::detail
                     "Entity components may not be used in a system where the primary component is a singleton. "
                     "Reorder your components such that an entity component is the first parameter.");
 
-                return ecs.get_component<Component>(c0.en);
+                return scene.get_component<Component>(c0.en);
             }
         }
     };
@@ -47,9 +47,9 @@ namespace mope::detail
     struct additional_component_gatherer<relationship<AdditionalComponents...>>
     {
         template <component PrimaryComponent>
-        static auto gather(ecs_manager& ecs, PrimaryComponent const&)
+        static auto gather(game_scene& scene, PrimaryComponent const&)
         {
-            return component_gatherer<AdditionalComponents...>::gather(ecs);
+            return component_gatherer<AdditionalComponents...>::gather(scene);
         }
     };
 
@@ -118,16 +118,16 @@ namespace mope::detail
     }
 
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    auto component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(ecs_manager& ecs)
+    auto component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(game_scene& scene)
     {
         // We need to handle the "primary" component separately because we need
         // the entity id from that component in order to capture the remaining
         // entity components.
-        return ecs.get_components<PrimaryComponent>()
-            | std::views::transform([&ecs](auto&& c0)
+        return scene.get_components<PrimaryComponent>()
+            | std::views::transform([&scene](auto&& c0)
                 {
                     auto tup = std::make_tuple(
-                        &c0, additional_component_gatherer<AdditionalComponents>::gather(ecs, c0)...
+                        &c0, additional_component_gatherer<AdditionalComponents>::gather(scene, c0)...
                     );
                     return tup;
                 })
@@ -167,7 +167,7 @@ namespace mope
     {
     public:
         virtual ~game_system_base() = default;
-        virtual void process_tick(game_scene& ecs, double time_step) = 0;
+        virtual void process_tick(game_scene& scene, double time_step) = 0;
     };
 
     template <component_or_relationship... Components>
@@ -177,9 +177,9 @@ namespace mope
     class game_system<PrimaryComponent, AdditionalComponents...> : public game_system_base
     {
     public:
-        static auto components(ecs_manager& ecs)
+        static auto components(game_scene& scene)
         {
-            return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(ecs);
+            return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(scene);
         }
     };
 

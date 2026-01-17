@@ -2,7 +2,6 @@
 
 #include "glad/glad.h"
 #include "mope_game_engine/components/input_state.hxx"
-#include "mope_game_engine/ecs_manager.hxx"
 #include "mope_game_engine/game_engine_error.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_window.hxx"
@@ -89,7 +88,7 @@ void mope::game_engine::run(I_game_window& window)
     }
 
     // We will try to ensure that our OpenGL resources are disposed of even if we end on an error.
-    auto f = finally {
+    auto resources = finally {
         [this]() {
             m_scenes.clear();
             release_gl_resources();
@@ -228,7 +227,7 @@ void mope::game_engine::run(I_game_window& window)
         }
     }
 
-    f.cleanup();
+    resources.cleanup();
 
     if (m_logger) {
         if (auto count = gl::resource_id::outstanding_count(); 0 != count) {

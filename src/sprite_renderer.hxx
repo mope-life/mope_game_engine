@@ -6,14 +6,14 @@
 
 namespace mope
 {
-    class ecs_manager;
+    class game_scene;
 
     class sprite_renderer
     {
     public:
         sprite_renderer();
-        void pre_tick(ecs_manager& ecs);
-        void render(ecs_manager& ecs, double alpha);
+        void pre_tick(game_scene& scene);
+        void render(game_scene& scene, double alpha);
 
         gl::shader m_shader;
         gl::vao m_vao;
