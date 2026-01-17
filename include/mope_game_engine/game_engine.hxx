@@ -18,7 +18,7 @@ namespace mope
 
 namespace mope
 {
-    class MOPE_GAME_ENGINE_EXPORT I_logger
+    class MOPE_GAME_ENGINE_EXPORT I_logger : public singleton_component
     {
     public:
         virtual ~I_logger() = default;

@@ -129,18 +129,7 @@ namespace mope::detail
     public:
         component_manager()
             : m_data{ }
-        {
-        }
-
-        component_manager(Component data)
-            : m_data{ std::move(data) }
-        {
-        }
-
-        component_manager(Component* external_data)
-            : m_data{ external_data }
-        {
-        }
+        { }
 
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Component>
@@ -190,7 +179,12 @@ namespace mope::detail
         }
 
     private:
-        std::variant<std::monostate, Component, Component*> m_data;
+        using Variant = std::conditional_t<
+            std::is_abstract_v<Component>,
+            std::variant<std::monostate, Component*>,
+            std::variant<std::monostate, Component, Component*>>;
+
+        Variant m_data;
     };
 
     template <derived_from_entity_component Component>

@@ -110,6 +110,7 @@ void mope::game_engine::run(I_game_window& window)
 
     for (auto& scene : m_scenes) {
         scene->set_external_component(&m_input_state);
+        scene->set_external_component(m_logger.get());
     }
 
     using seconds = std::chrono::duration<double, std::ratio<1, 1>>;
