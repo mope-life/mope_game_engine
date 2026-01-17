@@ -82,8 +82,8 @@ void main()
 
 void mope::sprite_renderer::pre_tick(ecs_manager& ecs)
 {
-    for (auto&& [sprite, transform] : 
-        detail::get_all_components_helper<sprite_component, transform_component>(ecs))
+    for (auto&& [sprite, transform]
+        : detail::component_gatherer<sprite_component, transform_component>::gather(ecs))
     {
         transform.save_model();
     }
@@ -91,8 +91,8 @@ void mope::sprite_renderer::pre_tick(ecs_manager& ecs)
 
 void mope::sprite_renderer::render(ecs_manager& ecs, double alpha)
 {
-    for (auto&& [sprite, transform] :
-        detail::get_all_components_helper<sprite_component, transform_component>(ecs))
+    for (auto&& [sprite, transform]
+        : detail::component_gatherer<sprite_component, transform_component>::gather(ecs))
     {
         sprite.texture.bind();
         m_shader.set_uniform("u_model", transform.blend(alpha));

@@ -1,16 +1,16 @@
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/ecs_manager.hxx"
+#include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
 
 #include <memory>
 #include <utility>
 
 mope::ecs_manager::ecs_manager()
-    : m_next_entity { 0 }
+    : m_next_entity{ 0 }
     , m_component_managers{ }
     , m_game_systems{ }
 {
-    set_external_component(this);
 }
 
 mope::ecs_manager::~ecs_manager() = default;
@@ -38,6 +38,6 @@ void mope::ecs_manager::add_game_system(std::unique_ptr<game_system_base> system
 void mope::ecs_manager::run_systems(double time_step)
 {
     for (auto&& system : m_game_systems) {
-        system->tick(*this, time_step);
+        system->process_tick(static_cast<game_scene&>(*this), time_step);
     }
 }

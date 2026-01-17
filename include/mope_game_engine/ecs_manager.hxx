@@ -157,7 +157,7 @@ namespace mope
 {
     class game_system_base;
 
-    class MOPE_GAME_ENGINE_EXPORT ecs_manager : public singleton_component
+    class MOPE_GAME_ENGINE_EXPORT ecs_manager
     {
     public:
         ecs_manager();
@@ -229,32 +229,23 @@ namespace mope
         void run_systems(double time_step);
 
     private:
-        // Users are expected to derive their scenes from `game_scene`, which is
-        // in turn derived from `ecs_manager`. We we will add the `ecs_manager`
-        // component once; this facilitates returning that component as whatever
-        // derived class the user requests.
         template <component Component>
-        using ManagedComponent = std::conditional_t<std::derived_from<Component, ecs_manager>, ecs_manager, Component>;
-
-        template <component Component>
-        auto ensure_component_manager() -> detail::component_manager<ManagedComponent<Component>>&
+        auto ensure_component_manager() -> detail::component_manager<Component>&
         {
-            using managed_component = ManagedComponent<Component>;
-
-            auto type_idx = std::type_index{ typeid(managed_component) };
+            auto type_idx = std::type_index{ typeid(Component) };
             auto iter = m_component_managers.find(type_idx);
             if (m_component_managers.end() == iter) {
                 iter = m_component_managers.insert(
-                    { type_idx, std::make_unique<detail::component_manager<managed_component>>() }
+                    { type_idx, std::make_unique<detail::component_manager<Component>>() }
                 ).first;
             }
             // Other code may leave empty unique_ptrs in the map by using the
             // subscript operator, so we want to check for both missing AND
             // nullptr.
             else if (!iter->second) {
-                iter->second = std::make_unique<detail::component_manager<managed_component>>();
+                iter->second = std::make_unique<detail::component_manager<Component>>();
             }
-            return static_cast<detail::component_manager<managed_component>&>(*iter->second);
+            return static_cast<detail::component_manager<Component>&>(*iter->second);
         }
 
         entity m_next_entity;

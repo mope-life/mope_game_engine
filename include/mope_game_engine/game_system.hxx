@@ -2,9 +2,11 @@
 
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/ecs_manager.hxx"
+#include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/iterable_box.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 
+#include <string>
 #include <concepts>
 #include <span>
 #include <ranges>
@@ -12,119 +14,178 @@
 
 namespace mope::detail
 {
-    template <component Component, component C0>
-    auto get_single_component_helper(ecs_manager& ecs, C0 const& c0) -> Component*
-    {
-        if constexpr (derived_from_singleton_component<Component>) {
-            return ecs.get_component<Component>();
-        }
-        else {
-            static_assert(
-                derived_from_entity_component<C0>,
-                "Entity components may not be used in a system where the primary component is a singleton. "
-                "Reorder your components such that an entity component is the first parameter."
-            );
-
-            return ecs.get_component<Component>(c0.en);
-        }
-    }
-
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    auto get_all_components_helper(ecs_manager& ecs);
+    struct component_gatherer
+    {
+        static auto gather(ecs_manager& ecs);
+    };
 
     template <component_or_relationship ComponentOrRelationship>
-    struct additional_component_view;
+    struct additional_component_gatherer;
 
     template <component Component>
-    struct additional_component_view<Component>
+    struct additional_component_gatherer<Component>
     {
-        template <component C0>
-        static auto get(ecs_manager& ecs, C0 const& c0)
+        template <component PrimaryComponent>
+        static auto gather(ecs_manager& ecs, PrimaryComponent const& c0)
         {
-            return iterable_box{ get_single_component_helper<Component>(ecs, c0) };
+            if constexpr (derived_from_singleton_component<Component>) {
+                return ecs.get_component<Component>();
+            }
+            else {
+                static_assert(
+                    derived_from_entity_component<PrimaryComponent>,
+                    "Entity components may not be used in a system where the primary component is a singleton. "
+                    "Reorder your components such that an entity component is the first parameter.");
+
+                return ecs.get_component<Component>(c0.en);
+            }
         }
     };
 
-    template <
-        derived_from_entity_component PrimaryComponent,
-        derived_from_entity_component... AdditionalComponents>
-    struct additional_component_view<relationship<PrimaryComponent, AdditionalComponents...>>
+    template <derived_from_entity_component... AdditionalComponents>
+    struct additional_component_gatherer<relationship<AdditionalComponents...>>
     {
-        template <component Ignored>
-        static auto get(ecs_manager& ecs, Ignored const&)
+        template <component PrimaryComponent>
+        static auto gather(ecs_manager& ecs, PrimaryComponent const&)
         {
-            // It's weird, but we're wrapping a view in a view. This is what
-            // allows the sub-views from relationships to surface as views in
-            // the output tuple: otherwise, the cartesian_product_view would
-            // expand this view out.
-            // But see the HACK below, this ultimately shouldn't be needed.
-            return std::ranges::single_view{
-                get_all_components_helper<PrimaryComponent, AdditionalComponents...>(ecs)
-            };
+            return component_gatherer<AdditionalComponents...>::gather(ecs);
         }
     };
 
-    template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    auto get_all_components_helper(ecs_manager& ecs)
+    /// Return true if @p t is a `nullptr_t` or a pointer equal to `nullptr`.
+    template <typename T>
+    auto is_nullptr_or_null_pointer(T const& t) -> bool
     {
-        if constexpr (0 == sizeof...(AdditionalComponents)) {
-            return ecs.get_components<PrimaryComponent>();
+        if constexpr (std::is_null_pointer_v<T>) {
+            return true;
+        }
+        else if constexpr (std::is_pointer_v<T>) {
+            return nullptr == t;
         }
         else {
-            // We need to handle the "primary" component seperately because we
-            // need the entity id from that component in order to capture the
-            // remaining entity components.
-            return ecs.get_components<PrimaryComponent>()
-                | std::views::transform([&ecs](auto&& c0)
-                    {
-                        // HACK alert: This is essentially a hacky way to check
-                        // every @ref iterable_box for a component, filtering out
-                        // those entities (which we grabbed from `c0`) that result
-                        // in one or more @ref iterable_box's to be empty.
-                        // I consider this a hack because we really only need a
-                        // filter (to filter out `nullptr`s) followed by a
-                        // transform (to dereference the pointers afterward).
-                        // I couldn't get it to work, so leaving this for now.
-                        return std::ranges::cartesian_product_view{
-                            std::span<PrimaryComponent, 1>{&c0, 1},
-                            additional_component_view<AdditionalComponents>::get(ecs, c0)...
-                        };
-                    })
-                | std::views::join;
+            return false;
+        }
+    }
+
+    /// The type of each element returned by @ref dereference_if_pointer(...).
+    ///
+    /// Unfortunately, there is no way to get anything in the STL (as far as I
+    /// know) to deduce the types we need. `std::make_tuple()` on its own will
+    /// fail to forward lvalue references, and `std::forward_as_tuple()` won't
+    /// work either, because it will forward our rvalues (the sub-views for
+    /// relationships) as rvalue references, that then become dangling. What
+    /// we want is to leave the derefed pointers as references, while actually
+    /// materializing the rvalue views as tuple members.
+    template <typename T>
+    using DeferencedTupleElement = std::conditional_t<
+        std::is_pointer_v<std::remove_reference_t<T>>,
+        std::add_lvalue_reference_t<std::remove_pointer_t<std::remove_reference_t<T>>>,
+        std::remove_reference_t<T>
+    >;
+
+    /// Dereference a possibly cv-qualified T*, returning the cv-qualified T&.
+    ///
+    /// All other types are returned as they were found.
+    template <typename T>
+    decltype(auto) dereference_if_pointer(T&& t)
+    {
+        if constexpr (std::is_pointer_v<std::remove_reference_t<T>>) {
+            return *t;
+        }
+        else {
+            return t;
+        }
+    }
+
+    /// Dereference all T* to T&, then return all parameters in a tuple.
+    ///
+    /// As a special case, if only one item is provided, don't bother wrapping
+    /// it in a tuple; just return that item by itself (still dereferencing it
+    /// if it is a pointer).
+    template <typename T, typename... Ts>
+    decltype(auto) make_dereferenced_tuple(T&& t, Ts&&... ts)
+    {
+        if constexpr (0 == sizeof...(ts)) {
+            return dereference_if_pointer(std::forward<T>(t));
+        }
+        else {
+            return std::tuple<DeferencedTupleElement<T>, DeferencedTupleElement<Ts>...>{
+                dereference_if_pointer(std::forward<T>(t)),
+                    dereference_if_pointer(std::forward<Ts>(ts))...
+            };
         }
     }
 
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    using component_view = decltype(
-        get_all_components_helper<PrimaryComponent, AdditionalComponents...>(
-            std::declval<ecs_manager&>()));
+    auto component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(ecs_manager& ecs)
+    {
+        // We need to handle the "primary" component separately because we need
+        // the entity id from that component in order to capture the remaining
+        // entity components.
+        return ecs.get_components<PrimaryComponent>()
+            | std::views::transform([&ecs](auto&& c0)
+                {
+                    auto tup = std::make_tuple(
+                        &c0, additional_component_gatherer<AdditionalComponents>::gather(ecs, c0)...
+                    );
+                    return tup;
+                })
+            | std::views::filter([](auto const& tup)
+                {
+                    // Filter out any tuples containing nullptr. This would mean
+                    // that an entity had the first ("primary") component, but
+                    // not at least one of the other requested components.
+                    return std::apply([](auto const&... elements)
+                        {
+                            return (!is_nullptr_or_null_pointer(elements) && ...);
+                        },
+                        tup
+                    );
+                })
+            | std::views::transform([](auto&& tup) -> decltype(auto)
+                {
+                    // Use `decltype(auto)` here because
+                    // `make_dereferenced_tuple()` will either return a tuple
+                    // by value OR a reference to a component in case only one
+                    // component is in the query.
+                    return std::apply([](auto&&... elements) -> decltype(auto)
+                        {
+                            return make_dereferenced_tuple(std::forward<decltype(elements)>(elements)...);
+                        },
+                        tup
+                    );
+                });
+    }
 } // namespace mope::detail
 
 namespace mope
 {
+    class game_scene;
+
     class MOPE_GAME_ENGINE_EXPORT game_system_base
     {
     public:
         virtual ~game_system_base() = default;
-
-        virtual void tick(ecs_manager& manager_map, double time_step) = 0;
+        virtual void process_tick(game_scene& ecs, double time_step) = 0;
     };
 
+    template <component_or_relationship... Components>
+    class game_system;
+
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    class game_system : public game_system_base
+    class game_system<PrimaryComponent, AdditionalComponents...> : public game_system_base
     {
     public:
-        using component_view = detail::component_view<PrimaryComponent, AdditionalComponents...>;
-
-    private:
-        virtual void process_tick(double time_step, component_view components) = 0;
-
-        void tick(ecs_manager& ecs, double time_step) override
+        static auto components(ecs_manager& ecs)
         {
-            process_tick(
-                time_step,
-                detail::get_all_components_helper<PrimaryComponent, AdditionalComponents...>(ecs)
-            );
+            return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(ecs);
         }
+    };
+
+    /// A system that does not need to query components.
+    template <>
+    class game_system<> : public game_system_base
+    {
     };
 }

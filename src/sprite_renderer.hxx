@@ -1,7 +1,6 @@
 #pragma once
 
 #include "buffer_object.hxx"
-
 #include "shader.hxx"
 #include "vao.hxx"
 
