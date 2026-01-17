@@ -1,6 +1,5 @@
 #pragma once
 
-#include "mope_game_engine/iterable_box.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 
 #include <concepts>
@@ -181,7 +180,12 @@ namespace mope::detail
 
         auto all()
         {
-            return iterable_box{ get() };
+            if (auto ptr = get(); nullptr != ptr) {
+                return std::span{ ptr, 1 };
+            }
+            else {
+                return std::span<Component>{ };
+            }
         }
 
     private:

@@ -3,7 +3,6 @@
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
-#include "mope_game_engine/iterable_box.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 
 #include <string>

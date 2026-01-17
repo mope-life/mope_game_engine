@@ -16,7 +16,6 @@ target_sources(
         "mope_game_engine/game_scene.hxx"
         "mope_game_engine/game_system.hxx"
         "mope_game_engine/game_window.hxx"
-        "mope_game_engine/iterable_box.hxx"
         "mope_game_engine/resource_id.hxx"
         "mope_game_engine/texture.hxx"
         "mope_game_engine/transforms.hxx"
