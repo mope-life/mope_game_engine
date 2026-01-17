@@ -77,7 +77,8 @@ namespace mope
     /// ```
     ///     std::derived_from<T, singleton_component> != std::derived_from<T, entity_component>
     /// ```
-    /// but GCC does not.
+    /// but GCC does not. (Rather, GCC complains that `std::derived_from<...>` is
+    /// not more constrained than the logical XOR.)
     template <typename T>
     concept component
         = derived_from_singleton_component<T> || derived_from_entity_component<T>;
@@ -86,8 +87,8 @@ namespace mope
     ///
     /// This struct doesn't really mean anything on its own. It can be used as
     /// template arguments in a @ref game_system to query for a sub-view of
-    /// components, not tied to the same entity as the other
-    /// @ref entity_components in the query.
+    /// components, not tied to the same entity as the primary
+    /// @ref entity_component in the query.
     template <derived_from_entity_component... RelatedComponents>
     struct relationship final
     {

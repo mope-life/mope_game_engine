@@ -5,11 +5,11 @@
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/mope_game_engine_export.hxx"
 
-#include <string>
 #include <concepts>
-#include <span>
 #include <ranges>
+#include <tuple>
 #include <utility>
+#include <type_traits>
 
 namespace mope::detail
 {
@@ -125,10 +125,9 @@ namespace mope::detail
         return scene.get_components<PrimaryComponent>()
             | std::views::transform([&scene](auto&& c0)
                 {
-                    auto tup = std::make_tuple(
+                    return std::make_tuple(
                         &c0, additional_component_gatherer<AdditionalComponents>::gather(scene, c0)...
                     );
-                    return tup;
                 })
             | std::views::filter([](auto const& tup)
                 {
@@ -172,6 +171,7 @@ namespace mope
     template <component_or_relationship... Components>
     class game_system;
 
+    /// A game system that acts on entities requiring the provided set of components.
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
     class game_system<PrimaryComponent, AdditionalComponents...> : public game_system_base
     {
@@ -182,7 +182,7 @@ namespace mope
         }
     };
 
-    /// A system that does not need to query components.
+    /// A game system that does not need to query components.
     template <>
     class game_system<> : public game_system_base
     {
