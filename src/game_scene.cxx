@@ -16,7 +16,6 @@ mope::game_scene::game_scene()
     , m_component_managers{ }
     , m_game_systems{ }
     , m_sprite_renderer{ }
-    , m_initialized{ false }
     , m_done{ false }
 {
 }
@@ -68,11 +67,6 @@ auto mope::game_scene::ensure_renderer() -> sprite_renderer&
 
 void mope::game_scene::tick(game_engine& engine, double time_step)
 {
-    if (!m_initialized) {
-        m_initialized = true;
-        on_initial_tick(engine);
-    }
-
     ensure_renderer().pre_tick(*this);
 
     for (auto&& system : m_game_systems) {
@@ -85,6 +79,5 @@ void mope::game_scene::render(double alpha)
     ensure_renderer().render(*this, alpha);
 }
 
-void mope::game_scene::on_initial_tick(game_engine&)
-{
-}
+void mope::game_scene::on_load(game_engine& engine) {}
+void mope::game_scene::on_unload(game_engine& engine) {}

@@ -34,9 +34,9 @@ namespace
 
     class pong : public mope::game_scene
     {
-    public:
-        auto on_initial_tick(mope::game_engine& engine) -> void override;
+        void on_load(mope::game_engine& engine) override;
 
+    public:
         mope::entity player{ create_entity() };
         mope::entity opponent{ create_entity() };
         mope::entity ball{ create_entity() };
@@ -292,7 +292,7 @@ namespace
         }
     };
 
-    void pong::on_initial_tick(mope::game_engine& engine)
+    void pong::on_load(mope::game_engine& engine)
     {
         // Random-number integrity is not paramount for our purposes.
         std::srand(std::time(0));

@@ -12,7 +12,9 @@
 #include <bitset>
 #include <chrono>
 #include <concepts>
+#include <iterator>
 #include <memory>
+#include <ranges>
 #include <ratio>
 #include <string>
 #include <utility>
@@ -60,10 +62,11 @@ namespace
 }
 
 mope::game_engine::game_engine(std::shared_ptr<I_logger> logger)
-    : m_logger{ std::move(logger) }
+    : m_new_scenes{ }
     , m_scenes{ }
+    , m_tick_time{ 0.0 }
+    , m_logger{ std::move(logger) }
     , m_input_state{ }
-    , m_ticktime{ 0.0 }
     , m_default_texture{ }
 {
 }
@@ -72,12 +75,12 @@ mope::game_engine::~game_engine() = default;
 
 void mope::game_engine::set_tick_rate(double hz_rate)
 {
-    m_ticktime = hz_rate > 0.0 ? 1.0 / hz_rate : 0.0;
+    m_tick_time = hz_rate > 0.0 ? 1.0 / hz_rate : 0.0;
 }
 
 void mope::game_engine::add_scene(std::unique_ptr<game_scene> scene)
 {
-    m_scenes.push_back(std::move(scene));
+    m_new_scenes.push_back(std::move(scene));
 }
 
 void mope::game_engine::run(I_game_window& window)
@@ -90,6 +93,9 @@ void mope::game_engine::run(I_game_window& window)
     // We will try to ensure that our OpenGL resources are disposed of even if we end on an error.
     auto resources = finally {
         [this]() {
+            for (auto&& scene : m_scenes) {
+                scene->on_unload(*this);
+            }
             m_scenes.clear();
             release_gl_resources();
         }
@@ -108,11 +114,6 @@ void mope::game_engine::run(I_game_window& window)
     m_input_state.cursor_position = window.cursor_pos();
     m_input_state.client_size = window.client_size();
 
-    for (auto& scene : m_scenes) {
-        scene->set_external_component(&m_input_state);
-        scene->set_external_component(m_logger.get());
-    }
-
     using seconds = std::chrono::duration<double, std::ratio<1, 1>>;
     using clock = std::chrono::steady_clock;
 
@@ -129,6 +130,26 @@ void mope::game_engine::run(I_game_window& window)
     // close. This likely but not necessarily comes just after we call
     // window.close().
     while (!window.wants_to_close()) {
+        if (auto new_scenes = m_new_scenes.size(); new_scenes > 0) {
+            m_scenes.reserve(m_scenes.size() + new_scenes);
+
+            auto range = std::ranges::subrange{
+                std::make_move_iterator(m_new_scenes.begin()),
+                std::make_move_iterator(m_new_scenes.end())
+            };
+
+            for (auto&& scene : range) {
+                // Give the scene access to the external components that we control.
+                scene->set_external_component(&m_input_state);
+                scene->set_external_component(m_logger.get());
+
+                scene->on_load(*this);
+                m_scenes.push_back(std::move(scene));
+            }
+
+            m_new_scenes.clear();
+        }
+
         // Process inputs from the window as frequently as possible.
         window.process_inputs();
 
@@ -141,7 +162,7 @@ void mope::game_engine::run(I_game_window& window)
         accumulator += delta_seconds;
         t0 = t;
 
-        auto dt = m_ticktime > 0.0 ? m_ticktime : accumulator;
+        auto dt = m_tick_time > 0.0 ? m_tick_time : accumulator;
 
         if (accumulator >= dt) {
             // Cache these since they are virtual function calls that have to
@@ -199,7 +220,13 @@ void mope::game_engine::run(I_game_window& window)
             std::stable_partition(
                 m_scenes.begin(),
                 m_scenes.end(),
-                [](auto&& scene) { return !scene->is_done(); }
+                [this](auto&& scene) {
+                    bool done = scene->is_done();
+                    if (done) {
+                        scene->on_unload(*this);
+                    }
+                    return !done;
+                }
             ),
             m_scenes.end()
         );

@@ -79,12 +79,12 @@ namespace mope
         void prepare_gl_resources();
         void release_gl_resources();
 
-        std::shared_ptr<I_logger> m_logger;
-
+        std::vector<std::unique_ptr<game_scene>> m_new_scenes;
         std::vector<std::unique_ptr<game_scene>> m_scenes;
-        input_state m_input_state;
-        double m_ticktime;
+        double m_tick_time;
 
+        std::shared_ptr<I_logger> m_logger;
+        input_state m_input_state;
         gl::texture m_default_texture;
     };
 } // namespace mope
