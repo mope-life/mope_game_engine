@@ -36,7 +36,20 @@ namespace mope
     class MOPE_GAME_ENGINE_EXPORT game_scene
     {
         // Customization points:
-        virtual void on_initial_tick(game_engine& engine);
+
+        /// Called when the @ref game_engine first sees your scene.
+        ///
+        /// Use this to add initial components / systems to the scene. By the
+        /// time we get here, the graphics context is ready to use, and all
+        /// engine-provided singleton components are available.
+        virtual void on_load(game_engine& engine);
+
+        /// Called after your scene returns `true` from `is_done()`, just before
+        /// it is deleted.
+        ///
+        /// TODO: This doesn't really do anything at the moment, but is a likely
+        /// place to allow scenes to perform serialization in the future.
+        virtual void on_unload(game_engine& engine);
 
     public:
         game_scene();
@@ -135,9 +148,7 @@ namespace mope
         std::unordered_map<std::type_index, std::unique_ptr<detail::component_manager_base>>
             m_component_managers;
         std::vector<std::unique_ptr<game_system_base>> m_game_systems;
-
         std::unique_ptr<sprite_renderer> m_sprite_renderer;
-        bool m_initialized;
         bool m_done;
     };
 }
