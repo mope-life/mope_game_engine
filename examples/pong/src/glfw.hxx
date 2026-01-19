@@ -84,7 +84,7 @@ namespace mope::glfw
         void process_inputs() override;
         void swap() override;
         auto wants_to_close() const -> bool override;
-        void close() override;
+        void close(bool should_close) override;
 
         auto key_states() const -> std::bitset<256> override;
         auto cursor_pos() const -> vec2f override;
