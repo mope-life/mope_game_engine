@@ -78,6 +78,3 @@ void mope::game_scene::render(double alpha)
 {
     ensure_renderer().render(*this, alpha);
 }
-
-void mope::game_scene::on_load(game_engine& engine) {}
-void mope::game_scene::on_unload(game_engine& engine) {}

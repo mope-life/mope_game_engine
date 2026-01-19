@@ -227,10 +227,10 @@ auto mope::glfw::window::wants_to_close() const -> bool
     return ::glfwWindowShouldClose(glfw_window);
 }
 
-void mope::glfw::window::close()
+void mope::glfw::window::close(bool should_close)
 {
     auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-    ::glfwSetWindowShouldClose(glfw_window, GLFW_TRUE);
+    ::glfwSetWindowShouldClose(glfw_window, should_close ? GLFW_TRUE : GLFW_FALSE);
 }
 
 auto mope::glfw::window::key_states() const -> std::bitset<256>

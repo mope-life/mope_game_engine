@@ -129,27 +129,9 @@ void mope::game_engine::run(I_game_window& window)
     // We will stay in the loop until the window confirms that it's time to
     // close. This likely but not necessarily comes just after we call
     // window.close().
-    while (!window.wants_to_close()) {
-        if (auto new_scenes = m_new_scenes.size(); new_scenes > 0) {
-            m_scenes.reserve(m_scenes.size() + new_scenes);
-
-            auto range = std::ranges::subrange{
-                std::make_move_iterator(m_new_scenes.begin()),
-                std::make_move_iterator(m_new_scenes.end())
-            };
-
-            for (auto&& scene : range) {
-                // Give the scene access to the external components that we control.
-                scene->set_external_component(&m_input_state);
-                scene->set_external_component(m_logger.get());
-
-                scene->on_load(*this);
-                m_scenes.push_back(std::move(scene));
-            }
-
-            m_new_scenes.clear();
-        }
-
+    // We want to make sure to load any new scenes before we do this check,
+    // because they get an opportunity to reject closing.
+    while (load_scenes(), keep_alive(window)) {
         // Process inputs from the window as frequently as possible.
         window.process_inputs();
 
@@ -192,6 +174,16 @@ void mope::game_engine::run(I_game_window& window)
             } while (accumulator >= dt);
 
             previous_key_states = m_input_state.held_keys;
+
+            // Erase any scenes reporting that they are done. We only do this
+            // check after process tick because that is the only place where the
+            // scene is expected to implement any logic.
+            unload_scenes();
+
+            // If there are no more scenes left, we should tell the window to close.
+            if (m_scenes.empty() && m_new_scenes.empty()) {
+                window.close();
+            }
         }
 
 #if defined(LOG_FPS) && LOG_FPS
@@ -213,46 +205,12 @@ void mope::game_engine::run(I_game_window& window)
         }
 #endif
 
-        // Erase any scenes reporting that they are done. It might make sense to
-        // only do this check after calling process_tick(), but we don't expect
-        // there to be a large number of scenes, so it's probably fine.
-        m_scenes.erase(
-            std::stable_partition(
-                m_scenes.begin(),
-                m_scenes.end(),
-                [this](auto&& scene) {
-                    bool done = scene->is_done();
-                    if (done) {
-                        scene->on_unload(*this);
-                    }
-                    return !done;
-                }
-            ),
-            m_scenes.end()
-        );
+        // If the steptime is non-zero, we can use it to compute alpha for interpolation.
+        // If it is zero, then alpha will also be zero and there will be no interpolation.
+        auto alpha = accumulator / dt;
 
-        // If there are no more scenes left, we should close and quit.
-        if (m_scenes.empty()) {
-            window.close();
-        }
-        else {
-            // If the steptime is non-zero, we can use it to compute alpha for interpolation.
-            // If it is zero, then alpha will also be zero and there will be no interpolation.
-            auto alpha = accumulator / dt;
-
-            // TODO: Support FPS capping.
-
-            // Clear everything previously on the screen.
-            ::glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            // Render all scenes.
-            for (auto&& scene : m_scenes) {
-                scene->render(alpha);
-            }
-
-            // Finally, tell the window that the next frame is ready.
-            window.swap();
-        }
+        // Finally, tell all the scenes to render.
+        draw(window, alpha);
     }
 
     resources.cleanup();
@@ -299,6 +257,83 @@ void mope::game_engine::release_gl_resources()
 {
     m_default_texture = gl::texture{};
     ::glDebugMessageCallback(NULL, NULL);
+}
+
+void mope::game_engine::load_scenes()
+{
+    if (auto new_scenes = m_new_scenes.size(); new_scenes > 0) {
+        m_scenes.reserve(m_scenes.size() + new_scenes);
+
+        auto range = std::ranges::subrange{
+            std::make_move_iterator(m_new_scenes.begin()),
+            std::make_move_iterator(m_new_scenes.end())
+        };
+
+        for (auto&& scene : range) {
+            // Give the scene access to the external components that we control.
+            scene->set_external_component(&m_input_state);
+            scene->set_external_component(m_logger.get());
+
+            scene->on_load(*this);
+            m_scenes.push_back(std::move(scene));
+        }
+
+        m_new_scenes.clear();
+    }
+}
+
+void mope::game_engine::unload_scenes()
+{
+    m_scenes.erase(
+        std::stable_partition(
+            m_scenes.begin(),
+            m_scenes.end(),
+            [this](auto&& scene) {
+                bool done = scene->is_done();
+                if (done) {
+                    scene->on_unload(*this);
+                }
+                return !done;
+            }
+        ),
+        m_scenes.end()
+    );
+}
+
+bool mope::game_engine::keep_alive(I_game_window& window)
+{
+    bool wants_to_close = window.wants_to_close();
+
+    bool rejected = false;
+    if (wants_to_close) {
+        // We want to call on_close() on every scene, so that the user doesn't
+        // have to worry about one scene rejecting the close before another can
+        // see it.
+        for (auto&& scene : m_scenes) {
+            rejected = !scene->on_close() || rejected;
+        }
+    }
+
+    if (wants_to_close && rejected) {
+        // Tell the window not to close after all.
+        window.close(false);
+    }
+
+    return !wants_to_close || rejected;
+}
+
+void mope::game_engine::draw(I_game_window& window, double alpha)
+{
+    // Clear everything previously on the screen.
+    ::glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Render all scenes.
+    for (auto&& scene : m_scenes) {
+        scene->render(alpha);
+    }
+
+    // Tell the window that the next frame is ready.
+    window.swap();
 }
 
 namespace

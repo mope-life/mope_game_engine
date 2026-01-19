@@ -78,6 +78,10 @@ namespace mope
     private:
         void prepare_gl_resources();
         void release_gl_resources();
+        void load_scenes();
+        void unload_scenes();
+        bool keep_alive(I_game_window& window);
+        void draw(I_game_window& window, double alpha);
 
         std::vector<std::unique_ptr<game_scene>> m_new_scenes;
         std::vector<std::unique_ptr<game_scene>> m_scenes;
