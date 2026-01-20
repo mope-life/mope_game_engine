@@ -78,8 +78,9 @@ namespace mope
 
         template <
             typename ComponentRef,
-            component Component = std::remove_cvref_t<ComponentRef>>
-            auto set_component(ComponentRef&& c) -> Component*
+            component Component = std::remove_cvref_t<ComponentRef>
+        >
+        auto set_component(ComponentRef&& c) -> Component*
         {
             return ensure_component_manager<Component>()
                 .add_or_set(std::forward<ComponentRef>(c));
@@ -115,6 +116,18 @@ namespace mope
         auto get_components()
         {
             return ensure_component_manager<Component>().all();
+        }
+
+        template <derived_from_entity_component Component>
+        void remove_component(entity en)
+        {
+            ensure_component_manager<Component>().remove(en);
+        }
+
+        template <derived_from_singleton_component Component>
+        void remove_component()
+        {
+            ensure_component_manager<Component>().remove();
         }
 
         void add_game_system(std::unique_ptr<game_system_base> system);

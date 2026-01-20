@@ -14,8 +14,8 @@
 #include "mope_vec/mope_vec.hxx"
 
 #include <algorithm>
-#include <cstdlib>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <functional>
 #include <memory>
