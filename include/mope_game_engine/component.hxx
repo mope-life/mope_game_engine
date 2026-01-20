@@ -145,6 +145,11 @@ namespace mope::detail
             return *std::get_if<Component*>(&m_data);
         }
 
+        void remove()
+        {
+            m_data = std::monostate{};
+        }
+
         auto get() -> Component*
         {
             struct visitor
