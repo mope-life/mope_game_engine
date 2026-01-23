@@ -158,7 +158,7 @@ void mope::game_engine::run(I_game_window& window)
             // TODO: Avoid death spiral in case a game update takes longer than m_ticktime.
             do {
                 for (auto&& scene : m_scenes) {
-                    scene->tick(*this, dt);
+                    scene->tick(dt);
                 }
 
                 // Only send "pressed" and "released" states once, even if we
@@ -383,7 +383,7 @@ namespace
         GLenum type,
         GLuint id,
         GLenum severity,
-        GLsizei length,
+        GLsizei /* length */,
         GLchar const* message,
         void const* user_param
     )

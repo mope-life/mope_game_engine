@@ -1,7 +1,5 @@
-#include "pong.hxx"
-
 #include "future.hxx"
-#include "glfw.hxx"
+#include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/components/input_state.hxx"
@@ -21,17 +19,12 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace
 {
-    static constexpr auto OrthoWidth{ 1024.f };
-    static constexpr auto OrthoHeight{ 768.f };
-    static constexpr auto PaddleWidth{ 12.f };
-    static constexpr auto PaddleHeight{ 80.f };
-    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
-
     class pong : public mope::game_scene
     {
         void on_load(mope::game_engine& engine) override;
@@ -45,6 +38,73 @@ namespace
         mope::entity player_score{ create_entity() };
         mope::entity opponent_score{ create_entity() };
     };
+}
+
+#if defined(_WIN32)
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <sstream>
+
+namespace
+{
+    class logger : public mope::I_logger
+    {
+        void log(std::string_view message, log_level level) const override
+        {
+            std::ostringstream output{};
+            output << "[" << level_string(level) << "] " << message << '\n';
+            OutputDebugStringA(output.str().c_str());
+        }
+    };
+}
+
+#define MAIN() int WINAPI WinMain(          \
+    _In_ HINSTANCE /*hInstance*/,           \
+    _In_opt_ HINSTANCE /*hPrevInstance*/,   \
+    _In_ LPSTR /*lpCmdLine*/,               \
+    _In_ int /*nShowCmd*/                   \
+)
+
+#else // !defined(_WIN32)
+
+#include <iostream>
+
+namespace
+{
+    class logger : public mope::I_logger
+    {
+        void log(std::string_view message, log_level level) const override
+        {
+            std::cout << "[" << level_string(level) << "] " << message << '\n';
+        }
+    };
+}
+
+#define MAIN() int main(int, char* [])
+
+#endif // defined(_WIN32)
+
+MAIN()
+{
+    auto window = mope::glfw::window{ 1024, 768, "Pong" };
+    window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
+
+    auto engine = mope::game_engine{ std::make_shared<logger>() };
+    engine.set_tick_rate(60.0);
+    engine.run(window, std::make_unique<pong>());
+
+    return EXIT_SUCCESS;
+}
+
+namespace
+{
+    static constexpr auto OrthoWidth{ 1024.f };
+    static constexpr auto OrthoHeight{ 768.f };
+    static constexpr auto PaddleWidth{ 12.f };
+    static constexpr auto PaddleHeight{ 80.f };
+    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
 
     struct player_component : public mope::entity_component
     {
@@ -81,7 +141,7 @@ namespace
 
     class player_movement : public mope::game_system<player_component, mope::transform_component, mope::input_state>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& [player, transform, inputs] : components(scene)) {
                 auto previous_y = transform.position().y();
@@ -186,7 +246,6 @@ namespace
                         remaining_time -= collision->contact_time;
 
                         auto velocity = static_cast<mope::vec3d>(ball.velocity);
-                        auto dot = velocity.dot(collision->contact_normal);
                         velocity -= 2 * velocity.dot(collision->contact_normal) * collision->contact_normal;
 
                         if (collider.paddle == collider.collision_type) {
@@ -214,7 +273,7 @@ namespace
         mope::relationship<player_score_component>,
         mope::relationship<opponent_score_component>>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& [ball, transform, player_score_view, opponent_score_view] : components(scene)) {
                 if (transform.x_position() > OrthoWidth) {
@@ -235,7 +294,7 @@ namespace
 
     class reset_game : public mope::game_system<ball_component>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& ball : components(scene)) {
                 if (ball.out_of_bounds) {
@@ -282,7 +341,7 @@ namespace
 
     class exit_on_escape : public mope::game_system<mope::input_state>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& inputs : components(scene)) {
                 if (inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
@@ -295,7 +354,7 @@ namespace
     void pong::on_load(mope::game_engine& engine)
     {
         // Random-number integrity is not paramount for our purposes.
-        std::srand(std::time(0));
+        std::srand(static_cast<unsigned int>(std::time(0)));
 
         mope::mat4f projection = mope::gl::orthographic_projection_matrix(
             0, OrthoWidth, 0, OrthoHeight, -10, 10
@@ -328,16 +387,4 @@ namespace
 
         // All transforms will be set by the reset system.
     }
-}
-
-int app_main(std::shared_ptr<mope::I_logger> logger)
-{
-    auto window = mope::glfw::window{ 1024, 768, "Pong" };
-    window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
-
-    auto engine = mope::game_engine{ logger };
-    engine.set_tick_rate(60.0);
-    engine.run(window, std::make_unique<pong>());
-
-    return EXIT_SUCCESS;
 }

@@ -2,7 +2,6 @@
 
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/components/input_state.hxx"
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_game_engine/texture.hxx"
 
 #include <concepts>
@@ -18,7 +17,7 @@ namespace mope
 
 namespace mope
 {
-    class MOPE_GAME_ENGINE_EXPORT I_logger : public singleton_component
+    class I_logger : public singleton_component
     {
     public:
         virtual ~I_logger() = default;
@@ -50,7 +49,7 @@ namespace mope
         }
     };
 
-    class MOPE_GAME_ENGINE_EXPORT game_engine final
+    class game_engine final
     {
     public:
         game_engine(std::shared_ptr<I_logger> logger = nullptr);

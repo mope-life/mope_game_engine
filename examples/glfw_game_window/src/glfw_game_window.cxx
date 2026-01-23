@@ -1,4 +1,4 @@
-#include "glfw.hxx"
+#include "glfw_game_window/glfw_game_window.hxx"
 
 // clang-format off
 // These headers must be in order

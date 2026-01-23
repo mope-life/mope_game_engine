@@ -95,7 +95,7 @@ void mope::sprite_renderer::render(game_scene& scene, double alpha)
         : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
     {
         sprite.texture.bind();
-        m_shader.set_uniform("u_model", transform.blend(alpha));
+        m_shader.set_uniform("u_model", transform.blend(static_cast<float>(alpha)));
         m_vao.bind();
         ::glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, 0);
     }

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_game_engine/transforms.hxx"
 #include "mope_vec/mope_vec.hxx"
 
@@ -10,7 +9,7 @@
 
 namespace mope
 {
-    struct MOPE_GAME_ENGINE_EXPORT transform_component : public entity_component
+    struct transform_component : public entity_component
     {
         transform_component(entity en, vec3f position, vec3f size)
             : entity_component{ en }

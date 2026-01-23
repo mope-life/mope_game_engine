@@ -44,7 +44,15 @@ void mope::gl::texture::make(
     auto&& [internal_format, gl_format] = map_pixel_format(format);
     bind();
     ::glTexImage2D(
-        GL_TEXTURE_2D, 0, internal_format, width, height, 0, gl_format, GL_UNSIGNED_BYTE, bytes
+        GL_TEXTURE_2D,
+        0,
+        internal_format,
+        static_cast<GLsizei>(width),
+        static_cast<GLsizei>(height),
+        0,
+        gl_format,
+        GL_UNSIGNED_BYTE,
+        bytes
     );
 }
 

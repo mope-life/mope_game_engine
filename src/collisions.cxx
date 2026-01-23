@@ -1,5 +1,4 @@
 #include "mope_game_engine/collisions.hxx"
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_vec/mope_vec.hxx"
 
 #include <algorithm>

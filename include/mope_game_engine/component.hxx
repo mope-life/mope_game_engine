@@ -1,7 +1,5 @@
 #pragma once
 
-#include "mope_game_engine/mope_game_engine_export.hxx"
-
 #include <concepts>
 #include <cstdint>
 #include <memory>
@@ -38,7 +36,7 @@ namespace mope
     ///
     /// These components can be requested by a @ref game_system in the
     /// @ref game_system::process_tick() override.
-    struct MOPE_GAME_ENGINE_EXPORT entity_component
+    struct entity_component
     {
         entity_component(entity en)
             : en{ en }
@@ -55,7 +53,7 @@ namespace mope
     /// include per-tick data, such as mouse/keyboard input. It can be requested
     /// in the process_tick method of a user system just as with an
     /// @ref entity_component.
-    struct MOPE_GAME_ENGINE_EXPORT singleton_component
+    struct singleton_component
     {
     };
 
@@ -103,7 +101,7 @@ namespace mope
 
 namespace mope::detail
 {
-    class MOPE_GAME_ENGINE_EXPORT component_manager_base
+    class component_manager_base
     {
     public:
         virtual ~component_manager_base() = default;
@@ -117,7 +115,7 @@ namespace mope::detail
         /// without requiring a dynamic_cast.
         ///
         /// @param en The entity whose component to remove.
-        virtual void remove(entity en) {}
+        virtual void remove(entity) {}
     };
 
     template <component Component>
