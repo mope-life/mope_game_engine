@@ -115,7 +115,7 @@ namespace mope::detail
         /// without requiring a dynamic_cast.
         ///
         /// @param en The entity whose component to remove.
-        virtual void remove(entity en) {}
+        virtual void remove(entity) {}
     };
 
     template <component Component>

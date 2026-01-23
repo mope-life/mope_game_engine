@@ -24,7 +24,7 @@ namespace mope::gl
 
         int stride;
         std::size_t offset;
-        std::size_t divisor = 0;
+        unsigned int divisor = 0;
     };
 
     ////////////////////////////////////////////////////////////////////////////

@@ -65,7 +65,7 @@ auto mope::game_scene::ensure_renderer() -> sprite_renderer&
     return *m_sprite_renderer;
 }
 
-void mope::game_scene::tick(game_engine& engine, double time_step)
+void mope::game_scene::tick(double time_step)
 {
     ensure_renderer().pre_tick(*this);
 

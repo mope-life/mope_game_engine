@@ -86,7 +86,6 @@ namespace
 
 #endif // defined(_WIN32)
 
-
 MAIN()
 {
     auto window = mope::glfw::window{ 1024, 768, "Pong" };
@@ -142,7 +141,7 @@ namespace
 
     class player_movement : public mope::game_system<player_component, mope::transform_component, mope::input_state>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& [player, transform, inputs] : components(scene)) {
                 auto previous_y = transform.position().y();
@@ -247,7 +246,6 @@ namespace
                         remaining_time -= collision->contact_time;
 
                         auto velocity = static_cast<mope::vec3d>(ball.velocity);
-                        auto dot = velocity.dot(collision->contact_normal);
                         velocity -= 2 * velocity.dot(collision->contact_normal) * collision->contact_normal;
 
                         if (collider.paddle == collider.collision_type) {
@@ -275,7 +273,7 @@ namespace
         mope::relationship<player_score_component>,
         mope::relationship<opponent_score_component>>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& [ball, transform, player_score_view, opponent_score_view] : components(scene)) {
                 if (transform.x_position() > OrthoWidth) {
@@ -296,7 +294,7 @@ namespace
 
     class reset_game : public mope::game_system<ball_component>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& ball : components(scene)) {
                 if (ball.out_of_bounds) {
@@ -343,7 +341,7 @@ namespace
 
     class exit_on_escape : public mope::game_system<mope::input_state>
     {
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
             for (auto&& inputs : components(scene)) {
                 if (inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
@@ -356,7 +354,7 @@ namespace
     void pong::on_load(mope::game_engine& engine)
     {
         // Random-number integrity is not paramount for our purposes.
-        std::srand(std::time(0));
+        std::srand(static_cast<unsigned int>(std::time(0)));
 
         mope::mat4f projection = mope::gl::orthographic_projection_matrix(
             0, OrthoWidth, 0, OrthoHeight, -10, 10

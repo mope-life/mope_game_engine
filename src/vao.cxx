@@ -24,7 +24,7 @@ namespace
     }
 }
 
-void mope::gl::vao::add_attribute(const attribute& attr)
+void mope::gl::vao::add_attribute(attribute const& attr)
 {
     bind();
     ::glVertexAttribPointer(
