@@ -1,7 +1,5 @@
-#include "pong.hxx"
-
 #include "future.hxx"
-#include "glfw.hxx"
+#include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/components/input_state.hxx"
@@ -21,17 +19,12 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace
 {
-    static constexpr auto OrthoWidth{ 1024.f };
-    static constexpr auto OrthoHeight{ 768.f };
-    static constexpr auto PaddleWidth{ 12.f };
-    static constexpr auto PaddleHeight{ 80.f };
-    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
-
     class pong : public mope::game_scene
     {
         void on_load(mope::game_engine& engine) override;
@@ -45,6 +38,74 @@ namespace
         mope::entity player_score{ create_entity() };
         mope::entity opponent_score{ create_entity() };
     };
+}
+
+#if defined(_WIN32)
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <sstream>
+
+namespace
+{
+    class logger : public mope::I_logger
+    {
+        void log(std::string_view message, log_level level) const override
+        {
+            std::ostringstream output{};
+            output << "[" << level_string(level) << "] " << message << '\n';
+            OutputDebugStringA(output.str().c_str());
+        }
+    };
+}
+
+#define MAIN() int WINAPI WinMain(          \
+    _In_ HINSTANCE /*hInstance*/,           \
+    _In_opt_ HINSTANCE /*hPrevInstance*/,   \
+    _In_ LPSTR /*lpCmdLine*/,               \
+    _In_ int /*nShowCmd*/                   \
+)
+
+#else // !defined(_WIN32)
+
+#include <iostream>
+
+namespace
+{
+    class logger : public mope::I_logger
+    {
+        void log(std::string_view message, log_level level) const override
+        {
+            std::cout << "[" << level_string(level) << "] " << message << '\n';
+        }
+    };
+}
+
+#define MAIN() int main(int, char* [])
+
+#endif // defined(_WIN32)
+
+
+MAIN()
+{
+    auto window = mope::glfw::window{ 1024, 768, "Pong" };
+    window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
+
+    auto engine = mope::game_engine{ std::make_shared<logger>() };
+    engine.set_tick_rate(60.0);
+    engine.run(window, std::make_unique<pong>());
+
+    return EXIT_SUCCESS;
+}
+
+namespace
+{
+    static constexpr auto OrthoWidth{ 1024.f };
+    static constexpr auto OrthoHeight{ 768.f };
+    static constexpr auto PaddleWidth{ 12.f };
+    static constexpr auto PaddleHeight{ 80.f };
+    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
 
     struct player_component : public mope::entity_component
     {
@@ -328,16 +389,4 @@ namespace
 
         // All transforms will be set by the reset system.
     }
-}
-
-int app_main(std::shared_ptr<mope::I_logger> logger)
-{
-    auto window = mope::glfw::window{ 1024, 768, "Pong" };
-    window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
-
-    auto engine = mope::game_engine{ logger };
-    engine.set_tick_rate(60.0);
-    engine.run(window, std::make_unique<pong>());
-
-    return EXIT_SUCCESS;
 }

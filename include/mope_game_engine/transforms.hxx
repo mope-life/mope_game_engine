@@ -1,6 +1,5 @@
 #pragma once
 
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_vec/mope_vec.hxx"
 
 namespace mope::gl

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_vec/mope_vec.hxx"
 
 #include <bitset>
@@ -33,7 +32,7 @@ namespace mope
     /// The scene also acts as the top-level ECS manager. Entites are doled out
     /// by the scene, components added to the scene with reference to those
     /// entities, and systems are added to the scene that act on the components.
-    class MOPE_GAME_ENGINE_EXPORT game_scene
+    class game_scene
     {
         // Customization points:
 

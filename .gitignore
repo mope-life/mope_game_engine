@@ -1,2 +1,4 @@
 /.vs
 /CMakeUserPresets.json
+/build
+/install

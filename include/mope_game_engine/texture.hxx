@@ -1,11 +1,10 @@
 #pragma once
 
-#include "mope_game_engine/mope_game_engine_export.hxx"
 #include "mope_game_engine/resource_id.hxx"
 
 namespace mope::gl
 {
-    enum class MOPE_GAME_ENGINE_EXPORT pixel_format
+    enum class pixel_format
     {
         r,
         rg,
@@ -15,7 +14,7 @@ namespace mope::gl
         bgra,
     };
 
-    class MOPE_GAME_ENGINE_EXPORT texture
+    class texture
     {
     public:
         void make(

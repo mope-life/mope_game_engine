@@ -1,20 +1,18 @@
 #pragma once
 
-#include "mope_game_engine/mope_game_engine_export.hxx"
+#include "mope_vec/mope_vec.hxx"
 
-#include <mope_vec/mope_vec.hxx>
 #include <memory>
-
 #include <bitset>
 
 namespace mope
 {
-    struct MOPE_GAME_ENGINE_EXPORT gl_context
+    struct gl_context
     {
         virtual ~gl_context() = default;
     };
 
-    class MOPE_GAME_ENGINE_EXPORT I_game_window
+    class I_game_window
     {
     public:
         virtual ~I_game_window() = default;

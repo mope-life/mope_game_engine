@@ -3,7 +3,6 @@
 #include "mope_game_engine/component.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
-#include "mope_game_engine/mope_game_engine_export.hxx"
 
 #include <concepts>
 #include <ranges>
@@ -161,7 +160,7 @@ namespace mope
 {
     class game_scene;
 
-    class MOPE_GAME_ENGINE_EXPORT game_system_base
+    class game_system_base
     {
     public:
         virtual ~game_system_base() = default;

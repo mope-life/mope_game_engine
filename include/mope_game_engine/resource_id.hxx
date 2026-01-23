@@ -1,7 +1,5 @@
 #pragma once
 
-#include "mope_game_engine/mope_game_engine_export.hxx"
-
 #include <utility>
 
 namespace mope::gl
@@ -11,7 +9,7 @@ namespace mope::gl
     /// @brief A handle to an OpenGL resource that must be cleaned up.
     /// @details @todo
     ////////////////////////////////////////////////////////////////////////////
-    class MOPE_GAME_ENGINE_EXPORT resource_id final
+    class resource_id final
     {
     public:
         static auto outstanding_count() -> int;
