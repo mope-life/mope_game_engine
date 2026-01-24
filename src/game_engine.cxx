@@ -24,6 +24,7 @@
 
 namespace
 {
+    [[maybe_unused]]
     void GLAPIENTRY on_debug_message(
         GLenum source,
         GLenum type,
@@ -246,11 +247,11 @@ void mope::game_engine::prepare_gl_resources()
     constexpr unsigned char bytes[]{ 0xffu, 0xffu, 0xffu, 0xffu };
     m_default_texture.make(bytes, gl::pixel_format::rgba, 1, 1);
 
-#if defined(DEBUG)
+#if !defined(NDEBUG)
     ::glEnable(GL_DEBUG_OUTPUT);
     ::glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     ::glDebugMessageCallback(on_debug_message, this);
-#endif // defined(DEBUG)
+#endif // !defined(NDEBUG)
 }
 
 void mope::game_engine::release_gl_resources()
