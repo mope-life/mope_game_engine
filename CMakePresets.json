@@ -1,8 +1,8 @@
 ﻿{
-  "version": 9,
+  "version": 8,
   "configurePresets": [
     {
-      "name": "ninja-base",
+      "name": "ninja-multi-config",
       "description": "Use system defaults with the Ninja Multi-Config generator.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
@@ -14,14 +14,14 @@
       "name": "debug",
       "displayName": "Debug",
       "description": "Use system defaults with the Ninja Multi-Config generator. (Debug)",
-      "configurePreset": "ninja-base",
+      "configurePreset": "ninja-multi-config",
       "configuration": "Debug"
     },
     {
       "name": "release",
       "displayName": "Release",
       "description": "Use system defaults with the Ninja Multi-Config generator. (Release)",
-      "configurePreset": "ninja-base",
+      "configurePreset": "ninja-multi-config",
       "configuration": "Release"
     }
   ]

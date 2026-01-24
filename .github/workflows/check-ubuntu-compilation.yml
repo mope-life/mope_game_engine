@@ -1,0 +1,19 @@
+name: Check Ubuntu compilation
+run-name: Making sure this PR compiles using latest Ubuntu LTS
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-compilation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          submodules: recursive
+      - run: |
+          sudo apt install libwayland-dev libxkbcommon-dev xorg-dev
+          cmake --preset ninja-multi-config
+          cmake --build --preset debug

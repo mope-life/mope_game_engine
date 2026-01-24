@@ -13,7 +13,7 @@ target_compile_options(
     pong
 
     PRIVATE
-        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4,-Wall -Wextra>
+        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4 /WX,-Wall -Wextra -Werror>
 )
 
 install(TARGETS pong)

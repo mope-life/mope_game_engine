@@ -11,6 +11,12 @@
 #include <variant>
 #include <vector>
 
+#if defined(__GNUC__)
+#define PRAGMA_GCC(x) _Pragma(#x)
+#else
+#define PRAGMA_GCC(x)
+#endif
+
 namespace mope::detail
 {
     template <typename T, template <typename...> typename Template>
@@ -101,6 +107,8 @@ namespace mope
 
 namespace mope::detail
 {
+PRAGMA_GCC(GCC diagnostic push)
+PRAGMA_GCC(GCC diagnostic ignored "-Woverloaded-virtual")
     class component_manager_base
     {
     public:
@@ -117,6 +125,7 @@ namespace mope::detail
         /// @param en The entity whose component to remove.
         virtual void remove(entity) {}
     };
+PRAGMA_GCC(GCC diagnostic pop)
 
     template <component Component>
     class component_manager;
@@ -125,10 +134,6 @@ namespace mope::detail
     class component_manager<Component> final : public component_manager_base
     {
     public:
-        component_manager()
-            : m_data{ }
-        { }
-
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Component>
         auto add_or_set(T&& t) -> Component*
