@@ -2,8 +2,6 @@ name: Check Ubuntu compilation
 run-name: Making sure this PR compiles using latest Ubuntu LTS
 on:
   pull_request:
-    types:
-      - opened
     branches:
       - main
 
