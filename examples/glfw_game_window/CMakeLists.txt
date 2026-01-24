@@ -20,5 +20,5 @@ target_compile_options(
     glfw_game_window
 
     PRIVATE
-        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4,-Wall -Wextra>
+        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4 /WX,-Wall -Wextra -Werror>
 )

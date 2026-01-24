@@ -26,7 +26,7 @@ target_compile_options(
     mope_game_engine
 
     PRIVATE
-        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4,-Wall -Wextra>
+        $<IF:$<CXX_COMPILER_ID:MSVC>,/W4 /WX,-Wall -Wextra -Werror>
 )
 
 add_subdirectory("include")
