@@ -14,5 +14,6 @@ jobs:
           ref: ${{ github.head_ref }}
           submodules: recursive
       - run: |
+          sudo apt install libwayland-dev libxkbcommon-dev xorg-dev
           cmake --preset ninja-multi-config
           cmake --build --preset debug
