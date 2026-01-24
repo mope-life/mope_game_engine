@@ -101,6 +101,8 @@ namespace mope
 
 namespace mope::detail
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverloaded-virtual"
     class component_manager_base
     {
     public:
@@ -117,6 +119,7 @@ namespace mope::detail
         /// @param en The entity whose component to remove.
         virtual void remove(entity) {}
     };
+#pragma GCC diagnostic pop
 
     template <component Component>
     class component_manager;
@@ -125,10 +128,6 @@ namespace mope::detail
     class component_manager<Component> final : public component_manager_base
     {
     public:
-        component_manager()
-            : m_data{ }
-        { }
-
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Component>
         auto add_or_set(T&& t) -> Component*
