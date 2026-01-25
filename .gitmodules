@@ -4,3 +4,6 @@
 [submodule "examples/glfw_game_window/external/glfw"]
 	path = examples/glfw_game_window/external/glfw
 	url = git@github.com:glfw/glfw
+[submodule "external/freetype"]
+	path = external/freetype
+	url = git@github.com:freetype/freetype.git
