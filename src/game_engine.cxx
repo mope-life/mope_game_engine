@@ -23,6 +23,39 @@
 
 #define LOG_FPS true
 
+namespace mope
+{
+    class game_engine final : public I_game_engine
+    {
+    public:
+        game_engine();
+        ~game_engine();
+        void destroy() override;
+        void set_tick_rate(double hz_rate) override;
+        void add_scene(std::unique_ptr<game_scene> scene) override;
+        void run(I_game_window& window, I_logger* logger) override;
+        auto get_default_texture() const -> gl::texture const& override;
+
+        void prepare_gl_resources(I_logger* logger);
+        void release_gl_resources();
+        void load_scenes(I_logger* logger);
+        void unload_scenes();
+        bool keep_alive(I_game_window& window);
+        void draw(I_game_window& window, double alpha);
+
+        std::vector<std::unique_ptr<game_scene>> m_new_scenes;
+        std::vector<std::unique_ptr<game_scene>> m_scenes;
+        double m_tick_time;
+        input_state m_input_state;
+        gl::texture m_default_texture;
+    };
+}
+
+auto mope_game_engine_create() -> mope::I_game_engine*
+{
+    return new mope::game_engine{ };
+}
+
 namespace
 {
     [[maybe_unused]]
@@ -72,6 +105,11 @@ mope::game_engine::game_engine()
 }
 
 mope::game_engine::~game_engine() = default;
+
+void mope::game_engine::destroy()
+{
+    delete this;
+}
 
 void mope::game_engine::set_tick_rate(double hz_rate)
 {

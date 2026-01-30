@@ -28,7 +28,7 @@ namespace
 {
     class pong : public mope::game_scene
     {
-        void on_load(mope::game_engine& engine) override;
+        void on_load(mope::I_game_engine& engine) override;
     };
 }
 
@@ -43,7 +43,7 @@ namespace
 {
     class logger : public mope::I_logger
     {
-        void log(const char* message, log_level level) const override
+        void log(char const* message, log_level level) const override
         {
             std::ostringstream output{};
             output << "[" << level_string(level) << "] " << message << '\n';
@@ -67,7 +67,7 @@ namespace
 {
     class logger : public mope::I_logger
     {
-        void log(const char* message, log_level level) const override
+        void log(char const* message, log_level level) const override
         {
             std::cout << "[" << level_string(level) << "] " << message << '\n';
         }
@@ -82,12 +82,12 @@ MAIN()
 {
     auto window = mope::glfw::window{ 1024, 768, "Pong" };
     window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
-
     logger log;
-    auto engine = mope::game_engine{ };
-    engine.set_tick_rate(60.0);
-    engine.add_scene(std::make_unique<pong>());
-    engine.run(window, &log);
+
+    auto engine = mope::game_engine_create();
+    engine->set_tick_rate(60.0);
+    engine->add_scene(std::make_unique<pong>());
+    engine->run(window, &log);
 
     return EXIT_SUCCESS;
 }
@@ -369,7 +369,7 @@ namespace
 
 namespace
 {
-    void pong::on_load(mope::game_engine& engine)
+    void pong::on_load(mope::I_game_engine& engine)
     {
         // Random-number integrity is not paramount for our purposes.
         std::srand(static_cast<unsigned int>(std::time(0)));

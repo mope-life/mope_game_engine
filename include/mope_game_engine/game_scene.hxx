@@ -20,7 +20,7 @@
 
 namespace mope
 {
-    class game_engine;
+    class I_game_engine;
     class sprite_renderer;
     struct input_state;
     struct I_logger;
@@ -30,9 +30,9 @@ namespace mope
 {
     /// A scene in a game.
     ///
-    /// The `game_scene` is the main entry-point into the mope_game_engine. The
+    /// The game_scene is the main entry-point into the mope_game_engine. The
     /// scene should be overriden and passed off to be driven by the
-    /// `game_engine`.
+    /// @ref I_game_engine.
     ///
     /// The scene also acts as the top-level ECS manager. Entites are doled out
     /// by the scene, components added to the scene with reference to those
@@ -42,19 +42,19 @@ namespace mope
     public:
         // Customization points:
 
-        /// Called when the @ref game_engine first sees your scene.
+        /// Called when the @ref I_game_engine first sees your scene.
         ///
         /// Use this to add initial components / systems to the scene. By the
         /// time we get here, the graphics context is ready to use, and all
         /// engine-provided singleton components are available.
-        virtual void on_load(game_engine&) { }
+        virtual void on_load(I_game_engine&) { }
 
         /// Called after your scene returns `true` from `is_done()`, just before
         /// it is deleted.
         ///
         /// TODO: This doesn't really do anything at the moment, but is a likely
         /// place to allow scenes to perform serialization in the future.
-        virtual void on_unload(game_engine&) { }
+        virtual void on_unload(I_game_engine&) { }
 
         /// Called when the @ref game_window has reported that it is ready to
         /// close.
