@@ -33,13 +33,13 @@ namespace
     public:
         void reset_round();
 
-        mope::entity player{ create_entity() };
-        mope::entity opponent{ create_entity() };
-        mope::entity ball{ create_entity() };
-        mope::entity top{ create_entity() };
-        mope::entity bottom{ create_entity() };
-        mope::entity player_score{ create_entity() };
-        mope::entity opponent_score{ create_entity() };
+        mope::entity_id player{ create_entity() };
+        mope::entity_id opponent{ create_entity() };
+        mope::entity_id ball{ create_entity() };
+        mope::entity_id top{ create_entity() };
+        mope::entity_id bottom{ create_entity() };
+        mope::entity_id player_score{ create_entity() };
+        mope::entity_id opponent_score{ create_entity() };
     };
 }
 
@@ -137,9 +137,8 @@ namespace
 
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        for (auto&& [player, transform] : mope::component_query<
-            player_component,
-            mope::transform_component>(scene))
+        for (auto&& [player, transform] : scene
+            .query<player_component, mope::transform_component>())
         {
             auto previous_y = transform.position().y();
             auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
@@ -154,12 +153,12 @@ namespace
 
     void opponent_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        for (auto&& [opponent, opponent_transform, ball_components] : mope::component_query<
-            opponent_component,
-            mope::transform_component,
-            mope::relationship<ball_component, mope::transform_component>>(scene))
+        for (auto&& [opponent, opponent_transform] : scene
+            .query<opponent_component, mope::transform_component>())
         {
-            for (auto&& [ball, ball_transform] : ball_components) {
+            for (auto&& [ball2, ball_transform] : scene
+                .query<ball_component, mope::transform_component>())
+            {
                 auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
                 auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
                 auto diff = ball_center - opponent_center;
@@ -189,15 +188,13 @@ namespace
 
         void operator()(mope::game_scene& scene, mope::tick_event const& event) override
         {
-            for (auto&& [ball, ball_transform, collider_components] : mope::component_query<
-                ball_component,
-                mope::transform_component,
-                mope::relationship<ball_collider_component, mope::transform_component>>(scene))
+            // We need to make multiple passes over these components, so we cache them first.
+            future::assign_range(m_collider_cache, scene
+                .query<ball_collider_component, mope::transform_component>());
+
+            for (auto&& [ball, ball_transform] : scene
+                .query<ball_component, mope::transform_component>())
             {
-                // The nested range is single-pass (std::ranges::input_range) only.
-                // So we need to cache the elements in case we need to make multiple
-                // passes.
-                future::assign_range(m_collider_cache, collider_components);
                 double remaining_time = event.time_step;
 
                 do {
@@ -232,7 +229,7 @@ namespace
                             m_collision_cache,
                             std::ranges::less{},
                             [](auto&& pair) { return pair.second->contact_time; });
-                        auto&& [collider, collider_transform] = m_collider_cache.at(i);
+                        auto&& [collider, collider_transform] = m_collider_cache[i];
 
                         // Move the ball by the amount of time before the collision
                         // occurred, then change course.
@@ -263,18 +260,17 @@ namespace
 
     void end_round(mope::game_scene& scene, mope::tick_event const&)
     {
-        for (auto&& [ball, transform] : mope::component_query<
-            ball_component,
-            mope::transform_component>(scene))
+        for (auto&& [ball, transform] : scene
+            .query<ball_component, mope::transform_component>())
         {
             if (transform.x_position() > OrthoWidth) {
-                for (auto&& player : mope::component_query<player_component>(scene)) {
+                for (auto&& player : scene.query<player_component>()) {
                     ++player.score;
                 }
                 static_cast<pong&>(scene).reset_round();
             }
             else if (transform.x_position() + transform.x_size() < 0.0f) {
-                for (auto&& opponent : mope::component_query<opponent_component>(scene)) {
+                for (auto&& opponent : scene.query<opponent_component>()) {
                     ++opponent.score;
                 }
                 static_cast<pong&>(scene).reset_round();
@@ -303,9 +299,9 @@ namespace
         set_projection_matrix(projection);
 
         add_game_system<mope::tick_event>(player_movement);
-        add_game_system<mope::tick_event>(exit_on_escape);
         add_game_system<mope::tick_event>(opponent_movement);
         add_game_system(std::make_unique<ball_movement>());
+        add_game_system<mope::tick_event>(exit_on_escape);
         add_game_system<mope::tick_event>(end_round);
 
         auto const& default_texture = engine.get_default_texture();
