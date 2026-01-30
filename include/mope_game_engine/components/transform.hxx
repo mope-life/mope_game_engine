@@ -11,8 +11,8 @@ namespace mope
 {
     struct transform_component : public entity_component
     {
-        transform_component(entity en, vec3f position, vec3f size)
-            : entity_component{ en }
+        transform_component(entity_id entity, vec3f position, vec3f size)
+            : entity_component{ entity }
             , m_position{ std::move(position) }
             , m_size{ std::move(size) }
             , m_stale{ false }

@@ -61,16 +61,6 @@ namespace mope
         void add_scene(std::unique_ptr<game_scene> scene);
         void run(I_game_window& window);
 
-        template <std::derived_from<game_scene>... Scenes>
-        void run(
-            I_game_window& window,
-            std::unique_ptr<Scenes>... scenes
-        )
-        {
-            (add_scene(std::move(scenes)), ...);
-            run(window);
-        }
-
         auto get_default_texture() const -> gl::texture const&;
         auto get_logger() const -> I_logger const*;
 

@@ -9,8 +9,8 @@ namespace mope
 {
     struct sprite_component : public entity_component
     {
-        sprite_component(entity en, gl::texture texture)
-            : entity_component{ en }
+        sprite_component(entity_id entity, gl::texture texture)
+            : entity_component{ entity }
             , texture{ std::move(texture) }
         { }
 

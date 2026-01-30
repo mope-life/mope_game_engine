@@ -50,7 +50,7 @@ namespace mope
         /// place to allow scenes to perform serialization in the future.
         virtual void on_unload(game_engine&) { }
 
-        /// Called when the `game_window` has reported that it is ready to
+        /// Called when the @ref game_window has reported that it is ready to
         /// close.
         ///
         /// Any scene may return false from this method to prevent the window
@@ -72,8 +72,8 @@ namespace mope
 
         void set_projection_matrix(mat4f const& projection);
 
-        auto create_entity() -> entity;
-        void destroy_entity(entity e);
+        auto create_entity() -> entity_id;
+        void destroy_entity(entity_id entity);
 
         template <
             typename ComponentRef,
@@ -106,9 +106,9 @@ namespace mope
         }
 
         template <derived_from_entity_component Component>
-        auto get_component(entity en) -> Component*
+        auto get_component(entity_id entity) -> Component*
         {
-            return ensure_component_manager<Component>().get(en);
+            return ensure_component_manager<Component>().get(entity);
         }
 
         template <component Component>
@@ -118,9 +118,9 @@ namespace mope
         }
 
         template <derived_from_entity_component Component>
-        void remove_component(entity en)
+        void remove_component(entity_id entity)
         {
-            ensure_component_manager<Component>().remove(en);
+            ensure_component_manager<Component>().remove(entity);
         }
 
         template <derived_from_singleton_component Component>
@@ -164,7 +164,7 @@ namespace mope
         /// Used by the `game_engine` to tell the scene when it is time to render.
         void render(double alpha);
 
-        entity m_next_entity;
+        entity_id m_last_entity;
         std::unordered_map<std::type_index, std::unique_ptr<detail::component_manager_base>>
             m_component_managers;
         std::vector<std::unique_ptr<game_system_base>> m_game_systems;

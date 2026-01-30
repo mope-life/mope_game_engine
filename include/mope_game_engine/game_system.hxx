@@ -5,6 +5,7 @@
 #include "mope_game_engine/game_scene.hxx"
 
 #include <concepts>
+#include <optional>
 #include <ranges>
 #include <tuple>
 #include <utility>
@@ -12,149 +13,212 @@
 
 namespace mope::detail
 {
-    template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    struct component_gatherer
+    template <typename T>
+    struct component_resolver;
+
+    template <typename T>
+    struct component_resolver_tuple
     {
-        static auto gather(game_scene& scene);
     };
 
-    template <component_or_relationship ComponentOrRelationship>
-    struct additional_component_gatherer;
-
-    template <component Component>
-    struct additional_component_gatherer<Component>
+    template <typename... Ts>
+    struct component_resolver_tuple<std::tuple<component_resolver<Ts>...>>
+        : std::type_identity<std::tuple<component_resolver<Ts>...>>
     {
-        template <component PrimaryComponent>
-        static auto gather(game_scene& scene, PrimaryComponent const& c0)
-        {
-            if constexpr (derived_from_singleton_component<Component>) {
-                return scene.get_component<Component>();
-            }
-            else {
-                static_assert(
-                    derived_from_entity_component<PrimaryComponent>,
-                    "Entity components may not be used in a system where the primary component is a singleton. "
-                    "Reorder your components such that an entity component is the first parameter.");
-
-                return scene.get_component<Component>(c0.en);
-            }
-        }
     };
 
-    template <derived_from_entity_component... AdditionalComponents>
-    struct additional_component_gatherer<relationship<AdditionalComponents...>>
+    template <
+        std::ranges::viewable_range R,
+        typename Tuple = component_resolver_tuple<std::ranges::range_value_t<R>>::type>
+    auto cull_missing_components(R&& rng)
     {
-        template <component PrimaryComponent>
-        static auto gather(game_scene& scene, PrimaryComponent const&)
-        {
-            return component_gatherer<AdditionalComponents...>::gather(scene);
-        }
-    };
-
-    /// Return true if @p t is a `nullptr_t` or a pointer equal to `nullptr`.
-    template <typename T>
-    auto is_nullptr_or_null_pointer(T const& t) -> bool
-    {
-        if constexpr (std::is_null_pointer_v<T>) {
-            return true;
-        }
-        else if constexpr (std::is_pointer_v<T>) {
-            return nullptr == t;
-        }
-        else {
-            return false;
-        }
-    }
-
-    /// The type of each element returned by @ref dereference_if_pointer(...).
-    ///
-    /// Unfortunately, there is no way to get anything in the STL (as far as I
-    /// know) to deduce the types we need. `std::make_tuple()` on its own will
-    /// fail to forward lvalue references, and `std::forward_as_tuple()` won't
-    /// work either, because it will forward our rvalues (the sub-views for
-    /// relationships) as rvalue references, that then become dangling. What
-    /// we want is to leave the derefed pointers as references, while actually
-    /// materializing the rvalue views as tuple members.
-    template <typename T>
-    using DeferencedTupleElement = std::conditional_t<
-        std::is_pointer_v<std::remove_reference_t<T>>,
-        std::add_lvalue_reference_t<std::remove_pointer_t<std::remove_reference_t<T>>>,
-        std::remove_reference_t<T>
-    >;
-
-    /// Dereference a possibly cv-qualified T*, returning the cv-qualified T&.
-    ///
-    /// All other types are returned as they were found.
-    template <typename T>
-    decltype(auto) dereference_if_pointer(T&& t)
-    {
-        if constexpr (std::is_pointer_v<std::remove_reference_t<T>>) {
-            return *t;
-        }
-        else {
-            return t;
-        }
-    }
-
-    /// Dereference all T* to T&, then return all parameters in a tuple.
-    ///
-    /// As a special case, if only one item is provided, don't bother wrapping
-    /// it in a tuple; just return that item by itself (still dereferencing it
-    /// if it is a pointer).
-    template <typename T, typename... Ts>
-    decltype(auto) make_dereferenced_tuple(T&& t, Ts&&... ts)
-    {
-        if constexpr (0 == sizeof...(ts)) {
-            return dereference_if_pointer(std::forward<T>(t));
-        }
-        else {
-            return std::tuple<DeferencedTupleElement<T>, DeferencedTupleElement<Ts>...>{
-                dereference_if_pointer(std::forward<T>(t)),
-                    dereference_if_pointer(std::forward<Ts>(ts))...
-            };
-        }
-    }
-
-    template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    auto component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(game_scene& scene)
-    {
-        // We need to handle the "primary" component separately because we need
-        // the entity id from that component in order to capture the remaining
-        // entity components.
-        return scene.get_components<PrimaryComponent>()
-            | std::views::transform([&scene](auto&& c0)
-                {
-                    return std::make_tuple(
-                        &c0, additional_component_gatherer<AdditionalComponents>::gather(scene, c0)...
-                    );
-                })
+        return rng
             | std::views::filter([](auto const& tup)
                 {
-                    // Filter out any tuples containing nullptr. This would mean
-                    // that an entity had the first ("primary") component, but
-                    // not at least one of the other requested components.
-                    return std::apply([](auto const&... elements)
+                    return std::apply([](auto const&... m)
                         {
-                            return (!is_nullptr_or_null_pointer(elements) && ...);
+                            return (m.okay() && ...);
                         },
-                        tup
-                    );
+                        tup);
                 })
             | std::views::transform([](auto&& tup) -> decltype(auto)
                 {
-                    // Use `decltype(auto)` here because
-                    // `make_dereferenced_tuple()` will either return a tuple
-                    // by value OR a reference to a component in case only one
-                    // component is in the query.
-                    return std::apply([](auto&&... elements) -> decltype(auto)
+                    auto result = std::apply([](auto&&... ms)
                         {
-                            return make_dereferenced_tuple(std::forward<decltype(elements)>(elements)...);
+                            return std::make_tuple(std::forward<decltype(ms)>(ms).extract()...);
                         },
-                        tup
-                    );
+                        std::forward<decltype(tup)>(tup));
+
+                    if constexpr (1 == std::tuple_size_v<Tuple>) {
+                        return std::get<0>(std::move(result));
+                    }
+                    else {
+                        return result;
+                    }
                 });
     }
-} // namespace mope::detail
+
+    template <component PrimaryComponent, component_or_subsystem... AdditionalComponents>
+    auto gather_components(game_scene& scene)
+    {
+        return cull_missing_components(
+            scene.get_components<PrimaryComponent>()
+            | std::views::transform([&scene](auto&& c0)
+                {
+                    if constexpr (derived_from_entity_component<PrimaryComponent>) {
+                        return std::make_tuple(
+                            component_resolver<PrimaryComponent&>{ c0 },
+                            component_resolver<AdditionalComponents>{ scene, c0.entity }...
+                        );
+                    }
+                    else {
+                        static_assert(!(derived_from_entity_component<AdditionalComponents> || ...),
+                            "Entity components may not be used in a system where the primary component is a singleton. "
+                            "Reorder your components such that an entity component is the first parameter.");
+
+                        return std::make_tuple(
+                            component_resolver<PrimaryComponent&>{ c0 },
+                            component_resolver<AdditionalComponents>{ scene, NoEntity }...
+                        );
+                    }
+                }));
+    }
+
+    template <derived_from_entity_component... Components>
+    auto gather_related_components(game_scene& scene, entity_id entity)
+    {
+        using Relationship = relationship<Components...>;
+
+        // TODO: Since there can be more than one of this type of component attached to a single entity,
+        // This actually needs to return a view.
+        auto c = scene.get_component<Relationship>(entity);
+
+        auto opt = std::optional<std::span<Relationship>>{};
+
+        if (nullptr != c) {
+            // TODO: We're just faking the view for now. In reality this span will probably be a ref_view
+            // over a vector (of relationship components with a common primary entity).
+            opt = std::span{ c, 1 };
+        }
+
+        return opt.transform([&scene](auto&& sp)
+            {
+                return cull_missing_components(
+                    sp
+                    | std::views::transform([&scene](auto&& c)
+                        {
+                            return std::make_tuple(component_resolver<Components>{scene, c.related_entity}...);
+                        })
+                );
+            }
+        );
+    }
+
+    template <derived_from_singleton_component Component>
+    struct component_resolver<Component>
+    {
+        Component* c;
+
+        component_resolver(game_scene& scene, entity_id)
+            : c{ scene.get_component<Component>() }
+        {
+        }
+
+        auto okay() const -> bool
+        {
+            return nullptr != c;
+        }
+
+        auto extract()
+        {
+            return std::ref(*c);
+        }
+    };
+
+    template <derived_from_entity_component Component>
+    struct component_resolver<Component>
+    {
+        Component* c;
+
+        component_resolver(game_scene& scene, entity_id entity)
+            : c{ scene.get_component<Component>(entity) }
+        {
+        }
+
+        auto okay() const -> bool
+        {
+            return nullptr != c;
+        }
+
+        auto extract()
+        {
+            return std::ref(*c);
+        }
+    };
+
+    template <component Component>
+    struct component_resolver<Component&>
+    {
+        Component& c;
+
+        component_resolver(Component& c)
+            : c{ c }
+        {
+        }
+
+        auto okay() const -> bool
+        {
+            return true;
+        }
+
+        auto extract()
+        {
+            return std::ref(c);
+        }
+    };
+
+    template <derived_from_entity_component... Components>
+    struct component_resolver<subsystem<Components...>>
+    {
+        decltype(gather_components<Components...>(std::declval<game_scene&>())) v;
+
+        component_resolver(game_scene& scene, entity_id)
+            : v{ gather_components<Components...>(scene) }
+        {
+        }
+
+        auto okay() const -> bool
+        {
+            return true;
+        }
+
+        auto extract() &&
+        {
+            return std::move(v);
+        }
+    };
+
+    template <derived_from_entity_component... Components>
+    struct component_resolver<relationship<Components...>>
+    {
+        decltype(gather_related_components<Components...>(std::declval<game_scene&>(), std::declval<entity_id>())) v;
+
+        component_resolver(game_scene& scene, entity_id entity)
+            : v{ gather_related_components<Components...>(scene, entity) }
+        {
+        }
+
+        auto okay() const -> bool
+        {
+            return v.has_value();
+        }
+
+        auto extract() &&
+        {
+            return *std::move(v);
+        }
+    };
+}
 
 namespace mope
 {
@@ -167,17 +231,17 @@ namespace mope
         virtual void process_tick(game_scene& scene, double time_step) = 0;
     };
 
-    template <component_or_relationship... Components>
+    template <component_or_subsystem... Components>
     class game_system;
 
     /// A game system that acts on entities requiring the provided set of components.
-    template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
+    template <component PrimaryComponent, component_or_subsystem... AdditionalComponents>
     class game_system<PrimaryComponent, AdditionalComponents...> : public game_system_base
     {
     public:
         static auto components(game_scene& scene)
         {
-            return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(scene);
+            return detail::gather_components<PrimaryComponent, AdditionalComponents...>(scene);
         }
     };
 

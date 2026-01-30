@@ -83,7 +83,7 @@ void main()
 void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
     for (auto&& [sprite, transform]
-        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
+        : detail::gather_components<sprite_component, transform_component>(scene))
     {
         transform.save_model();
     }
@@ -92,10 +92,11 @@ void mope::sprite_renderer::pre_tick(game_scene& scene)
 void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
     for (auto&& [sprite, transform]
-        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
+        : detail::gather_components<sprite_component, transform_component>(scene))
     {
         sprite.texture.bind();
-        m_shader.set_uniform("u_model", transform.blend(static_cast<float>(alpha)));
+        auto alphaf = static_cast<float>(alpha);
+        m_shader.set_uniform("u_model", transform.blend(alphaf));
         m_vao.bind();
         ::glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, 0);
     }

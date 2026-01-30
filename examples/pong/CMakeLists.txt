@@ -1,5 +1,4 @@
 add_executable(pong WIN32)
-add_subdirectory("src")
 
 target_link_libraries(
     pong
@@ -16,5 +15,4 @@ target_compile_options(
         $<IF:$<CXX_COMPILER_ID:MSVC>,/W4 /WX,-Wall -Wextra -Werror>
 )
 
-install(TARGETS pong)
-install(FILES $<TARGET_RUNTIME_DLLS:pong> TYPE BIN)
+add_subdirectory("src")

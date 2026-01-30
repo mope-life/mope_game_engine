@@ -20,6 +20,7 @@
 #include <optional>
 #include <ranges>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,13 +31,14 @@ namespace
         void on_load(mope::game_engine& engine) override;
 
     public:
-        mope::entity player{ create_entity() };
-        mope::entity opponent{ create_entity() };
-        mope::entity ball{ create_entity() };
-        mope::entity top{ create_entity() };
-        mope::entity bottom{ create_entity() };
-        mope::entity player_score{ create_entity() };
-        mope::entity opponent_score{ create_entity() };
+        mope::entity_id player{ create_entity() };
+        mope::entity_id opponent{ create_entity() };
+        mope::entity_id ball{ create_entity() };
+        mope::entity_id top{ create_entity() };
+        mope::entity_id bottom{ create_entity() };
+        mope::entity_id player_score{ create_entity() };
+        mope::entity_id opponent_score{ create_entity() };
+        mope::entity_id opponent_score_2{ create_entity() };
     };
 }
 
@@ -93,7 +95,8 @@ MAIN()
 
     auto engine = mope::game_engine{ std::make_shared<logger>() };
     engine.set_tick_rate(60.0);
-    engine.run(window, std::make_unique<pong>());
+    engine.add_scene(std::make_unique<pong>());
+    engine.run(window);
 
     return EXIT_SUCCESS;
 }
@@ -159,7 +162,7 @@ namespace
     class opponent_movement : public mope::game_system<
         opponent_component,
         mope::transform_component,
-        mope::relationship<ball_component, mope::transform_component>>
+        mope::subsystem<ball_component, mope::transform_component>>
     {
         void process_tick(mope::game_scene& scene, double time_step) override
         {
@@ -186,7 +189,7 @@ namespace
     class ball_movement : public mope::game_system<
         ball_component,
         mope::transform_component,
-        mope::relationship<ball_collider_component, mope::transform_component>>
+        mope::subsystem<ball_collider_component, mope::transform_component>>
     {
         std::vector<std::tuple<
             ball_collider_component&,
@@ -238,7 +241,7 @@ namespace
                             m_collision_cache,
                             std::ranges::less{},
                             [](auto&& pair) { return pair.second->contact_time; });
-                        auto&& [collider, collider_transform] = m_collider_cache.at(i);
+                        auto&& [collider, collider_transform] = m_collider_cache[i];
 
                         // Move the ball by the amount of time before the collision
                         // occurred, then change course.
@@ -270,8 +273,8 @@ namespace
     class victory_or_defeat : public mope::game_system<
         ball_component,
         mope::transform_component,
-        mope::relationship<player_score_component>,
-        mope::relationship<opponent_score_component>>
+        mope::subsystem<player_score_component>,
+        mope::subsystem<opponent_score_component>>
     {
         void process_tick(mope::game_scene& scene, double /* time_step */) override
         {
@@ -356,8 +359,8 @@ namespace
         // Random-number integrity is not paramount for our purposes.
         std::srand(static_cast<unsigned int>(std::time(0)));
 
-        mope::mat4f projection = mope::gl::orthographic_projection_matrix(
-            0, OrthoWidth, 0, OrthoHeight, -10, 10
+        auto projection = mope::gl::orthographic_projection_matrix(
+            0.0f, OrthoWidth, 0.0f, OrthoHeight, 10.0f, -10.0f
         );
         set_projection_matrix(projection);
 
