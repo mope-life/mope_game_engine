@@ -18,7 +18,7 @@ namespace mope::gl
         resource_id(unsigned int id, void (*release)(unsigned int));
         resource_id(resource_id const& that);
         resource_id(resource_id&& that) noexcept;
-        virtual ~resource_id();
+        ~resource_id();
 
         auto operator=(resource_id) noexcept -> resource_id&;
         operator unsigned int() const;

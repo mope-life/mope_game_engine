@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 
 #include <concepts>
@@ -158,32 +157,9 @@ namespace mope::detail
 
 namespace mope
 {
-    class game_scene;
-
-    class game_system_base
-    {
-    public:
-        virtual ~game_system_base() = default;
-        virtual void process_tick(game_scene& scene, double time_step) = 0;
-    };
-
-    template <component_or_relationship... Components>
-    class game_system;
-
-    /// A game system that acts on entities requiring the provided set of components.
     template <component PrimaryComponent, component_or_relationship... AdditionalComponents>
-    class game_system<PrimaryComponent, AdditionalComponents...> : public game_system_base
+    auto component_query(game_scene& scene)
     {
-    public:
-        static auto components(game_scene& scene)
-        {
-            return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(scene);
-        }
-    };
-
-    /// A game system that does not need to query components.
-    template <>
-    class game_system<> : public game_system_base
-    {
-    };
+        return detail::component_gatherer<PrimaryComponent, AdditionalComponents...>::gather(scene);
+    }
 }

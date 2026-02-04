@@ -1,15 +1,14 @@
 #include "mope_game_engine/game_scene.hxx"
 
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/game_engine.hxx"
-#include "mope_game_engine/game_system.hxx"
+#include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
 
 #include "shader.hxx"
 #include "sprite_renderer.hxx"
 
-#include <utility>
 #include <memory>
+#include <utility>
 
 mope::game_scene::game_scene()
     : m_next_entity{ 0 }
@@ -21,13 +20,6 @@ mope::game_scene::game_scene()
 }
 
 mope::game_scene::~game_scene() = default;
-mope::game_scene::game_scene(game_scene&&) = default;
-auto mope::game_scene::operator=(game_scene&&) -> game_scene& = default;
-
-void mope::game_scene::add_game_system(std::unique_ptr<game_system_base> system)
-{
-    m_game_systems.push_back(std::move(system));
-}
 
 void mope::game_scene::set_done(bool done)
 {
@@ -65,16 +57,34 @@ auto mope::game_scene::ensure_renderer() -> sprite_renderer&
     return *m_sprite_renderer;
 }
 
-void mope::game_scene::tick(double time_step)
+void mope::game_scene::tick(double time_step, input_state const& inputs)
 {
-    ensure_renderer().pre_tick(*this);
+    auto& renderer = ensure_renderer();
+    renderer.pre_tick(*this);
 
-    for (auto&& system : m_game_systems) {
-        system->process_tick(*this, time_step);
+    emplace_event<tick_event>(time_step, inputs);
+    auto& events = m_event_pool.events();
+    for (auto i = 0uz; i < events.size(); ++i) {
+        // Processing events potentially pushes more events, which potentially
+        // invalidates any references we take here. Since this seems like a path
+        // to madness, we are intentionally copying here.
+        auto [event, process_event] = events[i];
+        process_event(*this, event);
     }
+    m_event_pool.clear();
 }
 
 void mope::game_scene::render(double alpha)
 {
     ensure_renderer().render(*this, alpha);
+}
+
+auto mope::event_pool::events() -> decltype(m_events) const&
+{
+    return m_events;
+}
+
+void mope::event_pool::clear()
+{
+    m_events.clear();
 }

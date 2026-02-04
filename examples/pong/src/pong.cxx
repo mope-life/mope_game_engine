@@ -2,9 +2,10 @@
 #include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
 #include "mope_game_engine/component.hxx"
-#include "mope_game_engine/components/input_state.hxx"
+#include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
+#include "mope_game_engine/events/tick.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
@@ -19,7 +20,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
-#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,8 @@ namespace
         void on_load(mope::game_engine& engine) override;
 
     public:
+        void reset_round();
+
         mope::entity player{ create_entity() };
         mope::entity opponent{ create_entity() };
         mope::entity ball{ create_entity() };
@@ -51,7 +54,7 @@ namespace
 {
     class logger : public mope::I_logger
     {
-        void log(std::string_view message, log_level level) const override
+        void log(const char* message, log_level level) const override
         {
             std::ostringstream output{};
             output << "[" << level_string(level) << "] " << message << '\n';
@@ -75,7 +78,7 @@ namespace
 {
     class logger : public mope::I_logger
     {
-        void log(std::string_view message, log_level level) const override
+        void log(const char* message, log_level level) const override
         {
             std::cout << "[" << level_string(level) << "] " << message << '\n';
         }
@@ -91,9 +94,11 @@ MAIN()
     auto window = mope::glfw::window{ 1024, 768, "Pong" };
     window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
 
-    auto engine = mope::game_engine{ std::make_shared<logger>() };
+    logger log;
+    auto engine = mope::game_engine{ };
     engine.set_tick_rate(60.0);
-    engine.run(window, std::make_unique<pong>());
+    engine.add_scene(std::make_unique<pong>());
+    engine.run(window, &log);
 
     return EXIT_SUCCESS;
 }
@@ -108,25 +113,16 @@ namespace
 
     struct player_component : public mope::entity_component
     {
-    };
-
-    struct player_score_component : public mope::entity_component
-    {
         unsigned int score;
     };
 
     struct opponent_component : public mope::entity_component
-    {
-    };
-
-    struct opponent_score_component : public mope::entity_component
     {
         unsigned int score;
     };
 
     struct ball_component : public mope::entity_component
     {
-        bool out_of_bounds;
         mope::vec3f velocity;
     };
 
@@ -139,54 +135,49 @@ namespace
         } collision_type;
     };
 
-    class player_movement : public mope::game_system<player_component, mope::transform_component, mope::input_state>
+    void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        void process_tick(mope::game_scene& scene, double /* time_step */) override
+        for (auto&& [player, transform] : mope::component_query<
+            player_component,
+            mope::transform_component>(scene))
         {
-            for (auto&& [player, transform, inputs] : components(scene)) {
-                auto previous_y = transform.position().y();
-                auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
-                auto y_delta = inputs.cursor_deltas.y();
-                auto new_y = std::max(
-                    std::min(y_delta + previous_y, OrthoHeight - min_showing),
-                    min_showing - transform.size().y()
+            auto previous_y = transform.position().y();
+            auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
+            auto y_delta = event.inputs.cursor_deltas.y();
+            auto new_y = std::max(
+                std::min(y_delta + previous_y, OrthoHeight - min_showing),
+                min_showing - transform.size().y()
+            );
+            transform.set_y(new_y);
+        }
+    }
+
+    void opponent_movement(mope::game_scene& scene, mope::tick_event const& event)
+    {
+        for (auto&& [opponent, opponent_transform, ball_components] : mope::component_query<
+            opponent_component,
+            mope::transform_component,
+            mope::relationship<ball_component, mope::transform_component>>(scene))
+        {
+            for (auto&& [ball, ball_transform] : ball_components) {
+                auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
+                auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
+                auto diff = ball_center - opponent_center;
+
+                auto actual_change = std::copysign(
+                    std::min(
+                        static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
+                        std::abs(diff)
+                    ),
+                    diff
                 );
-                transform.set_y(new_y);
+
+                opponent_transform.slide({ 0.f, actual_change, 0.f });
             }
         }
-    };
+    }
 
-    class opponent_movement : public mope::game_system<
-        opponent_component,
-        mope::transform_component,
-        mope::relationship<ball_component, mope::transform_component>>
-    {
-        void process_tick(mope::game_scene& scene, double time_step) override
-        {
-            for (auto&& [opponent, opponent_transform, ball_components] : components(scene)) {
-                for (auto&& [ball, ball_transform] : ball_components) {
-                    auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
-                    auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
-                    auto diff = ball_center - opponent_center;
-
-                    auto actual_change = std::copysign(
-                        std::min(
-                            static_cast<float>(time_step * OpponentMaxPixelsPerSecond),
-                            std::abs(diff)
-                        ),
-                        diff
-                    );
-
-                    opponent_transform.slide({ 0.f, actual_change, 0.f });
-                }
-            }
-        }
-    };
-
-    class ball_movement : public mope::game_system<
-        ball_component,
-        mope::transform_component,
-        mope::relationship<ball_collider_component, mope::transform_component>>
+    class ball_movement : public mope::game_system<mope::tick_event>
     {
         std::vector<std::tuple<
             ball_collider_component&,
@@ -196,41 +187,44 @@ namespace
             std::size_t,
             std::optional<mope::collision>>> m_collision_cache;
 
-        void process_tick(mope::game_scene& scene, double time_step) override
+        void operator()(mope::game_scene& scene, mope::tick_event const& event) override
         {
-            for (auto&& [ball, ball_transform, collider_components] : components(scene)) {
+            for (auto&& [ball, ball_transform, collider_components] : mope::component_query<
+                ball_component,
+                mope::transform_component,
+                mope::relationship<ball_collider_component, mope::transform_component>>(scene))
+            {
                 // The nested range is single-pass (std::ranges::input_range) only.
                 // So we need to cache the elements in case we need to make multiple
                 // passes.
                 future::assign_range(m_collider_cache, collider_components);
-
-                double remaining_time = time_step;
+                double remaining_time = event.time_step;
 
                 do {
                     future::assign_range(
                         m_collision_cache,
                         m_collider_cache
-                            | std::views::enumerate
-                            | std::views::transform([&ball_transform, &ball](auto&& pair) {
-                                  auto&& [i, collider_pair] = pair;
-                                  auto&& collider_transform = std::get<1>(collider_pair);
-                                  return std::make_pair(
-                                      i,
-                                      mope::axis_aligned_object_collision(
-                                          ball_transform.position(),
-                                          ball_transform.size(),
-                                          ball.velocity,
-                                          collider_transform.position(),
-                                          collider_transform.size()
-                                      )
-                                  );
-                              })
-                            | std::views::filter([remaining_time](auto&& pair) {
-                                  auto& collision = pair.second;
-                                  return collision.has_value()
-                                      && !std::signbit(collision->contact_time)
-                                      && collision->contact_time < remaining_time;
-                              })
+                        | std::views::enumerate
+                        | std::views::transform([&ball_transform, &ball](auto&& pair) {
+                            auto&& [i, collider_pair] = pair;
+                            auto&& collider_transform = std::get<1>(collider_pair);
+                            return std::make_pair(
+                                i,
+                                mope::axis_aligned_object_collision(
+                                    ball_transform.position(),
+                                    ball_transform.size(),
+                                    ball.velocity,
+                                    collider_transform.position(),
+                                    collider_transform.size()
+                                )
+                            );
+                            })
+                        | std::views::filter([remaining_time](auto&& pair) {
+                            auto& collision = pair.second;
+                            return collision.has_value()
+                                && !std::signbit(collision->contact_time)
+                                && collision->contact_time < remaining_time;
+                            })
                     );
 
                     if (!m_collision_cache.empty()) {
@@ -267,90 +261,37 @@ namespace
         }
     };
 
-    class victory_or_defeat : public mope::game_system<
-        ball_component,
-        mope::transform_component,
-        mope::relationship<player_score_component>,
-        mope::relationship<opponent_score_component>>
+    void end_round(mope::game_scene& scene, mope::tick_event const&)
     {
-        void process_tick(mope::game_scene& scene, double /* time_step */) override
+        for (auto&& [ball, transform] : mope::component_query<
+            ball_component,
+            mope::transform_component>(scene))
         {
-            for (auto&& [ball, transform, player_score_view, opponent_score_view] : components(scene)) {
-                if (transform.x_position() > OrthoWidth) {
-                    for (auto&& player_score : player_score_view) {
-                        ++player_score.score;
-                    }
-                    ball.out_of_bounds = true;
+            if (transform.x_position() > OrthoWidth) {
+                for (auto&& player : mope::component_query<player_component>(scene)) {
+                    ++player.score;
                 }
-                else if (transform.x_position() + transform.x_size() < 0.0f) {
-                    for (auto&& opponent_score : opponent_score_view) {
-                        ++opponent_score.score;
-                    }
-                    ball.out_of_bounds = true;
+                static_cast<pong&>(scene).reset_round();
+            }
+            else if (transform.x_position() + transform.x_size() < 0.0f) {
+                for (auto&& opponent : mope::component_query<opponent_component>(scene)) {
+                    ++opponent.score;
                 }
+                static_cast<pong&>(scene).reset_round();
             }
         }
-    };
+    }
 
-    class reset_game : public mope::game_system<ball_component>
+    void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
     {
-        void process_tick(mope::game_scene& scene, double /* time_step */) override
-        {
-            for (auto&& ball : components(scene)) {
-                if (ball.out_of_bounds) {
-                    ball.out_of_bounds = false;
-                    ball.velocity = {
-                        ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
-                        static_cast<float>(std::rand() % 401 - 200),
-                        0.0f
-                    };
-
-                    auto& entities = static_cast<pong&>(scene);
-
-                    scene.set_components(
-                        mope::transform_component{
-                            entities.player,
-                            { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                            { PaddleWidth, PaddleHeight, 1.0f }
-                        },
-                        mope::transform_component{
-                            entities.opponent,
-                            { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                            { PaddleWidth, PaddleHeight, 1.0f }
-                        },
-                        mope::transform_component{
-                            entities.ball,
-                            { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
-                            { PaddleWidth, PaddleWidth, 1.0f }
-                        },
-                        mope::transform_component{
-                            entities.top,
-                            { -0.5f * OrthoWidth, -1.0f, 0.0f },
-                            { 2.0f * OrthoWidth, 1.0f, 1.0f }
-                        },
-                        mope::transform_component{
-                            entities.bottom,
-                            { -0.5f * OrthoWidth, OrthoHeight, 0.0f },
-                            { 2.0f * OrthoWidth, 1.0f, 1.0f }
-                        }
-                    );
-                }
-            }
+        if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
+            scene.set_done();
         }
-    };
+    }
+}
 
-    class exit_on_escape : public mope::game_system<mope::input_state>
-    {
-        void process_tick(mope::game_scene& scene, double /* time_step */) override
-        {
-            for (auto&& inputs : components(scene)) {
-                if (inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
-                    scene.set_done();
-                }
-            }
-        }
-    };
-
+namespace
+{
     void pong::on_load(mope::game_engine& engine)
     {
         // Random-number integrity is not paramount for our purposes.
@@ -361,30 +302,63 @@ namespace
         );
         set_projection_matrix(projection);
 
-        emplace_game_system<exit_on_escape>();
-        emplace_game_system<player_movement>();
-        emplace_game_system<opponent_movement>();
-        emplace_game_system<ball_movement>();
-        emplace_game_system<victory_or_defeat>();
-        emplace_game_system<reset_game>();
+        add_game_system<mope::tick_event>(player_movement);
+        add_game_system<mope::tick_event>(exit_on_escape);
+        add_game_system<mope::tick_event>(opponent_movement);
+        add_game_system(std::make_unique<ball_movement>());
+        add_game_system<mope::tick_event>(end_round);
 
         auto const& default_texture = engine.get_default_texture();
         set_components(
             mope::sprite_component{ player, default_texture },
             mope::sprite_component{ opponent, default_texture },
             mope::sprite_component{ ball, default_texture },
-            // Initially set the ball out of bounds so that the reset system will see it.
-            ball_component{ ball, true, { 0.0f, 0.0f, 0.0f } },
+            ball_component{ ball, { 0.0f, 0.0f, 0.0f } },
             player_component{ player },
             opponent_component{ opponent },
-            player_score_component{ player_score, 0u },
-            opponent_score_component{ opponent_score, 0u },
             ball_collider_component{ player, ball_collider_component::paddle },
             ball_collider_component{ opponent, ball_collider_component::paddle },
             ball_collider_component{ top, ball_collider_component::boundary },
             ball_collider_component{ bottom, ball_collider_component::boundary }
         );
 
-        // All transforms will be set by the reset system.
+        reset_round();
+    }
+
+    void pong::reset_round()
+    {
+        set_components(
+            ball_component{
+                ball,
+                { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f
+                , static_cast<float>(std::rand() % 401 - 200)
+                , 0.0f }
+            },
+            mope::transform_component{
+                player,
+                { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                { PaddleWidth, PaddleHeight, 1.0f }
+            },
+            mope::transform_component{
+                opponent,
+                { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                { PaddleWidth, PaddleHeight, 1.0f }
+            },
+            mope::transform_component{
+                ball,
+                { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
+                { PaddleWidth, PaddleWidth, 1.0f }
+            },
+            mope::transform_component{
+                top,
+                { -0.5f * OrthoWidth, -1.0f, 0.0f },
+                { 2.0f * OrthoWidth, 1.0f, 1.0f }
+            },
+            mope::transform_component{
+                bottom,
+                { -0.5f * OrthoWidth, OrthoHeight, 0.0f },
+                { 2.0f * OrthoWidth, 1.0f, 1.0f }
+            }
+        );
     }
 }
