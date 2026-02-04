@@ -206,7 +206,7 @@ namespace mope
             requires std::derived_from<System, game_system<typename System::event_type>>
         void add_game_system(std::unique_ptr<System> system)
         {
-            m_game_systems[typeid(System::event_type)].push_back(std::move(system));
+            m_game_systems[typeid(typename System::event_type)].push_back(std::move(system));
         }
 
         /// Add an invocable game system that is called whenever Event occurs.
