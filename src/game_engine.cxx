@@ -1,7 +1,8 @@
 #include "mope_game_engine/game_engine.hxx"
 
 #include "glad/glad.h"
-#include "mope_game_engine/components/input_state.hxx"
+#include "mope_game_engine/components/logger.hxx"
+#include "mope_game_engine/events/tick.hxx"
 #include "mope_game_engine/game_engine_error.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_window.hxx"
@@ -20,7 +21,7 @@
 #include <utility>
 #include <vector>
 
- #define LOG_FPS true
+#define LOG_FPS true
 
 namespace
 {
@@ -62,12 +63,10 @@ namespace
     };
 }
 
-mope::game_engine::game_engine(std::shared_ptr<I_logger> logger)
+mope::game_engine::game_engine()
     : m_new_scenes{ }
     , m_scenes{ }
     , m_tick_time{ 0.0 }
-    , m_logger{ std::move(logger) }
-    , m_input_state{ }
     , m_default_texture{ }
 {
 }
@@ -84,7 +83,7 @@ void mope::game_engine::add_scene(std::unique_ptr<game_scene> scene)
     m_new_scenes.push_back(std::move(scene));
 }
 
-void mope::game_engine::run(I_game_window& window)
+void mope::game_engine::run(I_game_window& window, I_logger* logger)
 {
     auto context = window.get_context();
     if (!context) {
@@ -102,18 +101,20 @@ void mope::game_engine::run(I_game_window& window)
         }
     };
 
-    prepare_gl_resources();
+    prepare_gl_resources(logger);
+
+    auto inputs = input_state{};
 
     // Set the initial client and input state.
     auto previous_key_states = std::bitset<256>{};
-    m_input_state.held_keys = previous_key_states;
-    m_input_state.pressed_keys = previous_key_states;
-    m_input_state.released_keys = previous_key_states;
-    m_input_state.cursor_deltas = { 0, 0 };
+    inputs.held_keys = previous_key_states;
+    inputs.pressed_keys = previous_key_states;
+    inputs.released_keys = previous_key_states;
+    inputs.cursor_deltas = { 0, 0 };
 
     window.process_inputs();
-    m_input_state.cursor_position = window.cursor_pos();
-    m_input_state.client_size = window.client_size();
+    inputs.cursor_position = window.cursor_pos();
+    inputs.client_size = window.client_size();
 
     using seconds = std::chrono::duration<double, std::ratio<1, 1>>;
     using clock = std::chrono::steady_clock;
@@ -132,13 +133,13 @@ void mope::game_engine::run(I_game_window& window)
     // window.close().
     // We want to make sure to load any new scenes before we do this check,
     // because they get an opportunity to reject closing.
-    while (load_scenes(), keep_alive(window)) {
+    while (load_scenes(logger), keep_alive(window)) {
         // Process inputs from the window as frequently as possible.
         window.process_inputs();
 
-        m_input_state.held_keys = window.key_states();
-        m_input_state.pressed_keys |= m_input_state.held_keys & ~previous_key_states;
-        m_input_state.released_keys |= ~m_input_state.held_keys & previous_key_states;
+        inputs.held_keys = window.key_states();
+        inputs.pressed_keys |= inputs.held_keys & ~previous_key_states;
+        inputs.released_keys |= ~inputs.held_keys & previous_key_states;
 
         auto t = clock::now();
         auto delta_seconds = std::chrono::duration_cast<seconds>(t - t0).count();
@@ -151,21 +152,21 @@ void mope::game_engine::run(I_game_window& window)
             // Cache these since they are virtual function calls that have to
             // perform an unknown amount of work, and won't change in between
             // ticks / scenes.
-            m_input_state.cursor_position = window.cursor_pos();
-            m_input_state.cursor_deltas = window.cursor_deltas();
-            m_input_state.client_size = window.client_size();
+            inputs.cursor_position = window.cursor_pos();
+            inputs.cursor_deltas = window.cursor_deltas();
+            inputs.client_size = window.client_size();
 
             // Tick each window for each time step that has passed.
             // TODO: Avoid death spiral in case a game update takes longer than m_ticktime.
             do {
                 for (auto&& scene : m_scenes) {
-                    scene->tick(dt);
+                    scene->tick(dt, inputs);
                 }
 
                 // Only send "pressed" and "released" states once, even if we
                 // are processing multiple ticks.
-                m_input_state.pressed_keys.reset();
-                m_input_state.released_keys.reset();
+                inputs.pressed_keys.reset();
+                inputs.released_keys.reset();
 
                 accumulator -= dt;
 
@@ -174,7 +175,7 @@ void mope::game_engine::run(I_game_window& window)
 #endif
             } while (accumulator >= dt);
 
-            previous_key_states = m_input_state.held_keys;
+            previous_key_states = inputs.held_keys;
 
             // Erase any scenes reporting that they are done. We only do this
             // check after process tick because that is the only place where the
@@ -197,9 +198,9 @@ void mope::game_engine::run(I_game_window& window)
             auto tps = tick_counter / delta;
             frame_counter = 0;
             tick_counter = 0;
-            if (m_logger) {
-                m_logger->log(
-                    "fps: " + std::to_string(fps) + " / ticks: " + std::to_string(tps),
+            if (nullptr != logger) {
+                logger->log(
+                    ("fps: " + std::to_string(fps) + " / ticks: " + std::to_string(tps)).c_str(),
                     I_logger::log_level::debug
                 );
             }
@@ -216,15 +217,15 @@ void mope::game_engine::run(I_game_window& window)
 
     resources.cleanup();
 
-    if (m_logger) {
+    if (nullptr != logger) {
         if (auto count = gl::resource_id::outstanding_count(); 0 != count) {
-            m_logger->log(
-                std::to_string(count) + " OpenGL resources left outstanding.",
+            logger->log(
+                (std::to_string(count) + " OpenGL resources left outstanding.").c_str(),
                 I_logger::log_level::warning
             );
         }
         else {
-            m_logger->log(
+            logger->log(
                 "All OpenGL resources were cleaned up.",
                 I_logger::log_level::debug
             );
@@ -237,12 +238,7 @@ auto mope::game_engine::get_default_texture() const -> gl::texture const&
     return m_default_texture;
 }
 
-auto mope::game_engine::get_logger() const -> I_logger const*
-{
-    return m_logger.get();
-}
-
-void mope::game_engine::prepare_gl_resources()
+void mope::game_engine::prepare_gl_resources(I_logger* logger)
 {
     constexpr unsigned char bytes[]{ 0xffu, 0xffu, 0xffu, 0xffu };
     m_default_texture.make(bytes, gl::pixel_format::rgba, 1, 1);
@@ -250,7 +246,7 @@ void mope::game_engine::prepare_gl_resources()
 #if !defined(NDEBUG)
     ::glEnable(GL_DEBUG_OUTPUT);
     ::glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    ::glDebugMessageCallback(on_debug_message, this);
+    ::glDebugMessageCallback(on_debug_message, logger);
 #endif // !defined(NDEBUG)
 }
 
@@ -260,7 +256,7 @@ void mope::game_engine::release_gl_resources()
     ::glDebugMessageCallback(NULL, NULL);
 }
 
-void mope::game_engine::load_scenes()
+void mope::game_engine::load_scenes(I_logger* logger)
 {
     if (auto new_scenes = m_new_scenes.size(); new_scenes > 0) {
         m_scenes.reserve(m_scenes.size() + new_scenes);
@@ -272,8 +268,7 @@ void mope::game_engine::load_scenes()
 
         for (auto&& scene : range) {
             // Give the scene access to the external components that we control.
-            scene->set_external_component(&m_input_state);
-            scene->set_external_component(m_logger.get());
+            scene->set_external_component(logger);
 
             scene->on_load(*this);
             m_scenes.push_back(std::move(scene));
@@ -389,27 +384,24 @@ namespace
         void const* user_param
     )
     {
-        if (nullptr != user_param) {
-            auto engine = static_cast<mope::game_engine const*>(user_param);
-            if (auto logger = engine->get_logger()) {
-                auto msg = std::string{ "OpenGL message:\n" }
-                    + "    Id:       " + std::to_string(id) + '\n'
-                    + "    Source:   " + debug_source(source) + '\n'
-                    + "    Type:     " + debug_type(type) + '\n'
-                    + "    Severity: " + debug_severity(severity) + '\n'
-                    + "    ----------" + '\n'
-                    + message;
+        if (auto logger = static_cast<mope::I_logger const*>(user_param)) {
+            auto msg = std::string{ "OpenGL message:\n" }
+                + "    Id:       " + std::to_string(id) + '\n'
+                + "    Source:   " + debug_source(source) + '\n'
+                + "    Type:     " + debug_type(type) + '\n'
+                + "    Severity: " + debug_severity(severity) + '\n'
+                + "    ----------" + '\n'
+                + message;
 
-                using log_level = mope::I_logger::log_level;
+            using log_level = mope::I_logger::log_level;
 
-                auto level = log_level::error;
-                switch (severity) {
-                case GL_DEBUG_SEVERITY_LOW:          level = log_level::warning; break;
-                case GL_DEBUG_SEVERITY_NOTIFICATION: level = log_level::notification; break;
-                }
-
-                logger->log(msg, level);
+            auto level = log_level::error;
+            switch (severity) {
+            case GL_DEBUG_SEVERITY_LOW:          level = log_level::warning; break;
+            case GL_DEBUG_SEVERITY_NOTIFICATION: level = log_level::notification; break;
             }
+
+            logger->log(msg.c_str(), level);
         }
     }
 }

@@ -6,6 +6,7 @@
 #include <bitset>
 #include <concepts>
 #include <memory>
+#include <memory_resource>
 #include <ranges>
 #include <typeindex>
 #include <type_traits>
@@ -17,8 +18,65 @@
 namespace mope
 {
     class game_engine;
-    class game_system_base;
     class sprite_renderer;
+    struct input_state;
+}
+
+namespace mope
+{
+    class game_scene;
+
+    class event_pool
+    {
+        std::vector<std::tuple<void*, void(*)(game_scene&, void*)>> m_events;
+        std::pmr::unsynchronized_pool_resource m_pool;
+
+    public:
+        template <typename Event>
+        static void process_event(game_scene& scene, void* ptr);
+
+        template <typename Event, typename... Args>
+        void store(Args&&... args)
+        {
+            auto ptr = m_pool.allocate(sizeof(Event), alignof(Event));
+            auto event = new (ptr) Event(std::forward<Args>(args)...);
+            m_events.emplace_back(static_cast<void*>(event), &process_event<Event>);
+        }
+
+        auto events() -> decltype(m_events) const&;
+        void clear();
+    };
+
+    struct game_system_base
+    {
+        virtual ~game_system_base() = default;
+    };
+
+    template <typename Event>
+    struct game_system : public game_system_base
+    {
+        using event_type = Event;
+
+        virtual void operator()(game_scene&, Event const&) = 0;
+    };
+
+    template <typename Event, std::invocable<game_scene&, Event const&> F>
+    struct game_system_proxy : public game_system<Event>
+    {
+        template <typename G>
+            requires std::same_as<F, std::decay_t<G>>
+        game_system_proxy(G&& g)
+            : f{ std::forward<G>(g) }
+        { }
+
+        void operator()(game_scene& scene, Event const& event) override
+        {
+            f(scene, event);
+        }
+
+    private:
+        F f;
+    };
 }
 
 namespace mope
@@ -34,6 +92,7 @@ namespace mope
     /// entities, and systems are added to the scene that act on the components.
     class game_scene
     {
+    public:
         // Customization points:
 
         /// Called when the @ref game_engine first sees your scene.
@@ -58,12 +117,9 @@ namespace mope
         /// save before closing.
         virtual bool on_close() { return true; }
 
-    public:
         game_scene();
         virtual ~game_scene() = 0;
 
-        game_scene(game_scene&&);
-        auto operator=(game_scene&&) -> game_scene&;
         game_scene(game_scene const&) = delete;
         auto operator=(game_scene const&) -> game_scene & = delete;
 
@@ -74,6 +130,12 @@ namespace mope
 
         auto create_entity() -> entity;
         void destroy_entity(entity e);
+
+        /// Used by the @ref game_engine to move the scene forward by one time step.
+        void tick(double time_step, input_state const& inputs);
+
+        /// Used by the @ref game_engine to tell the scene when it is time to render.
+        void render(double alpha);
 
         template <
             typename ComponentRef,
@@ -129,12 +191,44 @@ namespace mope
             ensure_component_manager<Component>().remove();
         }
 
-        void add_game_system(std::unique_ptr<game_system_base> system);
-
-        template <typename System, typename... Args>
-        void emplace_game_system(Args&&... args)
+        /// Add an instance of an game system derived from @ref game_system<T>.
+        ///
+        /// Class-based game systems may be used when your system has need to
+        /// hold on to some particular data or resource, and you would like to
+        /// keep that within the class. Simply derive your class from
+        /// game_system<Event> and add an override for
+        /// `operator()(game_system&, Event const&)`.
+        ///
+        /// Note that this should be less common than the plain old invocable
+        /// overload (below), since system state is usually better accessed
+        /// through components.
+        template <typename System>
+            requires std::derived_from<System, game_system<typename System::event_type>>
+        void add_game_system(std::unique_ptr<System> system)
         {
-            add_game_system(std::make_unique<System>(std::forward<Args>(args)...));
+            m_game_systems[typeid(typename System::event_type)].push_back(std::move(system));
+        }
+
+        /// Add an invocable game system that is called whenever Event occurs.
+        template <typename Event, std::invocable<game_scene&, Event const&> F>
+        void add_game_system(F&& f)
+        {
+            add_game_system(
+                std::make_unique<game_system_proxy<Event, std::decay_t<F>>>(
+                    std::forward<F>(f)
+                ));
+        }
+
+        template <typename Event, typename... Args>
+        void emplace_event(Args&&... args)
+        {
+            m_event_pool.store<Event>(std::forward<Args>(args)...);
+        }
+
+        template <typename Event>
+        void push_event(Event&& event)
+        {
+            m_event_pool.store<std::remove_cvref_t<Event>>(std::forward<Event>(event));
         }
 
     private:
@@ -156,19 +250,36 @@ namespace mope
             }
             return static_cast<detail::component_manager<Component>&>(*iter->second);
         }
-        auto ensure_renderer() -> sprite_renderer&;
 
-        friend class mope::game_engine;
-        /// Used by the `game_engine` to move the scene forward by one time step.
-        void tick(double time_step);
-        /// Used by the `game_engine` to tell the scene when it is time to render.
-        void render(double alpha);
+        auto ensure_renderer() -> sprite_renderer&;
 
         entity m_next_entity;
         std::unordered_map<std::type_index, std::unique_ptr<detail::component_manager_base>>
             m_component_managers;
-        std::vector<std::unique_ptr<game_system_base>> m_game_systems;
+        std::unordered_map<std::type_index, std::vector<std::unique_ptr<game_system_base>>>
+            m_game_systems;
+        event_pool m_event_pool;
         std::unique_ptr<sprite_renderer> m_sprite_renderer;
         bool m_done;
+
+        template <typename Event>
+        friend void event_pool::process_event(game_scene& scene, void* ptr);
     };
+
+    template <typename Event>
+    void event_pool::process_event(game_scene& scene, void* ptr)
+    {
+        auto event = static_cast<Event*>(ptr);
+
+        for (auto&& system_base_ptr : scene.m_game_systems[typeid(Event)]) {
+            auto& system = static_cast<game_system<Event>&>(*system_base_ptr);
+            system(scene, *event);
+        }
+
+        if constexpr (!std::is_trivially_destructible_v<Event>) {
+            event->~Event();
+        }
+
+        scene.m_event_pool.m_pool.deallocate(ptr, sizeof(Event), alignof(Event));
+    }
 }
