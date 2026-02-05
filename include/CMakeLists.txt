@@ -10,11 +10,11 @@ target_sources(
     FILES
         "glad/glad.h"
         "KHR/khrplatform.h"
+        "mope_game_engine/components/component.hxx"
         "mope_game_engine/components/logger.hxx"
         "mope_game_engine/components/sprite.hxx"
         "mope_game_engine/components/transform.hxx"
         "mope_game_engine/collisions.hxx"
-        "mope_game_engine/component.hxx"
         "mope_game_engine/component_manager.hxx"
         "mope_game_engine/event_pool.hxx"
         "mope_game_engine/events/tick.hxx"

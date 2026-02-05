@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mope_game_engine/component.hxx"
+#include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/component_manager.hxx"
 #include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/game_system.hxx"

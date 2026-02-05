@@ -1,7 +1,6 @@
 #include "future.hxx"
 #include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
-#include "mope_game_engine/component.hxx"
 #include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"

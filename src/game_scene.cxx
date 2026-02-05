@@ -1,6 +1,6 @@
 #include "mope_game_engine/game_scene.hxx"
 
-#include "mope_game_engine/component.hxx"
+#include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
