@@ -83,44 +83,63 @@ namespace mope
         /// Used by the @ref game_engine to tell the scene when it is time to render.
         void render(double alpha);
 
-        /// Add an instance of an game system derived from @ref game_system<T>.
+        /// Add a game system that is invoked when certain events occur.
         ///
-        /// Class-based game systems may be used when your system has need to
-        /// hold on to some particular data or resource, and you would like to
-        /// keep that within the class. Simply derive your class from
-        /// game_system<Event> and add an override for
-        /// `operator()(game_system&, Event const&)`.
-        ///
-        /// Note that this should be less common than the plain old invocable
-        /// overload (below), since system state is usually better accessed
-        /// through components.
-        template <typename System>
-            requires std::derived_from<System, game_system<typename System::event_type>>
-        void add_game_system(std::unique_ptr<System> system)
-        {
-            m_game_systems[typeid(typename System::event_type)].push_back(std::move(system));
-        }
-
-        /// Add an invocable game system that is called whenever Event occurs.
-        template <typename Event, std::invocable<game_scene&, Event const&> F>
+        /// `f` shall be a callable function or object with the signature:
+        /// ```
+        ///     R (game_scene&, Event const&)
+        /// ```
+        /// where `R` and `Event` are any type. `f` will be invoked for every
+        /// event of type `Event` that occurs.
+        template <proxyable_game_system F>
         void add_game_system(F&& f)
         {
-            add_game_system(
-                std::make_unique<game_system_proxy<Event, std::decay_t<F>>>(
-                    std::forward<F>(f)
-                ));
+            // Determine the type of event to which this system responds.
+            using Event = std::remove_cvref_t<
+                typename detail::parameters_of<std::decay_t<F>>::template type<1>
+            >;
+            add_game_system_imp(new game_system_proxy<Event, std::decay_t<F>>{ std::forward<F>(f) });
         }
 
-        template <typename Event, typename... Args>
-        void emplace_event(Args&&... args)
+        /// Add an instance of a game system derived from @ref game_system<T...>.
+        ///
+        /// There are two possible advantages of using this overload over the
+        /// above:
+        ///   - `System` isn't copied or moved during construction, and
+        ///   - `System` can respond to any number of event types, by
+        ///      overloading `operator()` for each one (and providing the event
+        ///      types to the base @ref game_system). This is not possible using
+        ///      the functor method.
+        template <typename System>
+        void add_game_system(std::unique_ptr<System>&& system)
         {
-            m_event_pool.store<Event>(std::forward<Args>(args)...);
+            // This ensures that the system type can be implicitly cast to
+            // `game_system<Events...>`, i.e., it publicly derives from
+            // `game_system<Events...>`. Using a concept (`std::derived_from<>`)
+            // isn't possible here, as we as we don't know the event types yet.
+            // And it is vitally important that `System` does in fact derive
+            // from @ref virtual_event_handler for each event.
+            add_game_system_imp(system.release());
+        }
+
+        /// Like the `std::unique_ptr` overload of `add_game_system()`, but we
+        /// don't actually need the intermediate `std::unique_ptr<>`.
+        template <typename System, typename... Args>
+        void emplace_game_system(Args&&... args)
+        {
+            add_game_system_imp(new System(std::forward<Args>(args)...));
         }
 
         template <typename Event>
         void push_event(Event&& event)
         {
             m_event_pool.store<std::remove_cvref_t<Event>>(std::forward<Event>(event));
+        }
+
+        template <typename Event, typename... Args>
+        void emplace_event(Args&&... args)
+        {
+            m_event_pool.store<Event>(std::forward<Args>(args)...);
         }
 
         template <component... Components>
@@ -132,8 +151,15 @@ namespace mope
     private:
         auto ensure_renderer() -> sprite_renderer&;
 
+        template <typename... Events>
+        void add_game_system_imp(game_system<Events...>* system)
+        {
+            auto shared = std::shared_ptr<game_system<Events...>>{ system };
+            (m_game_systems[typeid(Events)].push_back(shared), ...);
+        }
+
         entity_id m_last_entity;
-        std::unordered_map<std::type_index, std::vector<std::unique_ptr<detail::game_system_base>>>
+        std::unordered_map<std::type_index, std::vector<std::shared_ptr<void>>>
             m_game_systems;
         detail::event_pool m_event_pool;
         std::unique_ptr<sprite_renderer> m_sprite_renderer;

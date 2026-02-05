@@ -273,7 +273,7 @@ namespace
         }
     }
 
-    void reset_round(mope::game_scene& scene, reset_round_event)
+    void reset_round(mope::game_scene& scene, reset_round_event const&)
     {
         for (auto&& ball : scene.query<ball_component>()) {
             scene.set_components(
@@ -326,18 +326,18 @@ namespace
         );
         set_projection_matrix(projection);
 
-        add_game_system<reset_round_event>(reset_round);
-        add_game_system<mope::tick_event>(player_movement);
-        add_game_system<mope::tick_event>(opponent_movement);
-        add_game_system(std::make_unique<ball_movement>());
-        add_game_system<mope::tick_event>(exit_on_escape);
-        add_game_system<mope::tick_event>(end_round);
+        add_game_system(reset_round);
+        add_game_system(player_movement);
+        add_game_system(opponent_movement);
+        emplace_game_system<ball_movement>();
+        add_game_system(exit_on_escape);
+        add_game_system(end_round);
 
-        auto player{ create_entity() };
-        auto opponent{ create_entity() };
-        auto ball{ create_entity() };
-        auto top{ create_entity() };
-        auto bottom{ create_entity() };
+        auto player = create_entity();
+        auto opponent = create_entity();
+        auto ball = create_entity();
+        auto top = create_entity();
+        auto bottom = create_entity();
 
         auto const& default_texture = engine.get_default_texture();
         set_components(

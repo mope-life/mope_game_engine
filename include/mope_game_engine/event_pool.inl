@@ -1,10 +1,12 @@
+// Included by game_scene.hxx
+
 template <typename Event>
 void mope::detail::event_pool::process_event(game_scene& scene, void* ptr)
 {
     auto event = static_cast<Event*>(ptr);
 
     for (auto&& system_base_ptr : scene.m_game_systems[typeid(Event)]) {
-        auto& system = static_cast<game_system<Event>&>(*system_base_ptr);
+        auto& system = *static_cast<virtual_event_handler<Event>*>(system_base_ptr.get());
         system(scene, *event);
     }
 
