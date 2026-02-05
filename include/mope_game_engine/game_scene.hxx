@@ -123,14 +123,6 @@ namespace mope
             m_event_pool.store<std::remove_cvref_t<Event>>(std::forward<Event>(event));
         }
 
-        /*
-        template <derived_from_entity_component Component>
-        auto query(entity_id entity)
-        {
-            return query_single_entity_component<Component>{*this, entity};
-        }
-        */
-
         template <component... Components>
         auto query()
         {

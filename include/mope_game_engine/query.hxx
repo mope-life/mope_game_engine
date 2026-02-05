@@ -40,31 +40,42 @@ namespace mope::detail
             return std::forward<T>(t);
         }
     }
-}
 
-namespace mope
-{
-    template <component PrimaryComponent, component... Components>
-    struct query_components
+    template <typename T>
+    struct wrap
     {
-        query_components(component_manager& manager)
-            : m_manager{ manager }
-            , m_view{ make_view(manager) }
-        { }
-
-        auto begin()
+        template <typename U>
+            requires std::same_as<T, std::remove_cvref_t<U>>
+        static auto operator()(U&& u)
         {
-            return m_view.begin();
+            return std::forward_as_tuple(u);
         }
+    };
 
-        auto end()
+    template <typename... T>
+    struct wrap<std::tuple<T...>>
+    {
+        template <typename U>
+            requires std::same_as<std::tuple<T...>, std::remove_cvref_t<U>>
+        static decltype(auto) operator()(U&& u)
         {
-            return m_view.end();
+            return std::forward<U>(u);
         }
+    };
 
-    private:
-        static auto make_view(component_manager& manager)
-        {
+    template <typename... T>
+    auto make_flat_tuple(T&&... ts)
+    {
+        return std::tuple_cat(wrap<std::remove_cvref_t<T>>{}(std::forward<T>(ts))...);
+    }
+
+    template <component PrimaryComponent, component... Components>
+    auto gather_components(component_manager& manager)
+    {
+        if constexpr (0 == sizeof...(Components)) {
+            return manager.get_components<PrimaryComponent>();
+        }
+        else {
             return manager.get_components<PrimaryComponent>()
                 | std::views::transform([&manager](auto&& primary_component)
                     {
@@ -98,21 +109,121 @@ namespace mope
                     })
                 | std::views::transform([](auto&& tup) -> decltype(auto)
                     {
-                        if constexpr (0 == sizeof...(Components)) {
-                            return std::get<0>(std::forward<decltype(tup)>(tup));
-                        }
-                        else {
-                            return std::apply([](auto&&... ms)
-                                {
-                                    return std::forward_as_tuple(detail::deref(ms)...);
-                                },
-                                std::forward<decltype(tup)>(tup));
-                        }
+                        return std::apply([](auto&&... ms)
+                            {
+                                return std::forward_as_tuple(detail::deref(ms)...);
+                            },
+                            std::forward<decltype(tup)>(tup));
                     });
+        }
+    }
+}
+
+namespace mope
+{
+    template <std::ranges::view View, component... Components>
+    struct query_join;
+
+    struct joinable_query_mixin
+    {
+    protected:
+        template <std::ranges::view ViewT, component... JoinComponents>
+        auto join_mixin(component_manager& manager, ViewT view)
+            -> query_join<ViewT, JoinComponents...>;
+    };
+
+    template <std::ranges::view View, component... Components>
+    struct query_join : public joinable_query_mixin
+    {
+        query_join(component_manager& manager, View previous_view)
+            : m_manager{ manager }
+            , m_view{ make_view(manager, std::move(previous_view)) }
+        {
+        }
+
+        auto begin()
+        {
+            return m_view.begin();
+        }
+
+        auto end()
+        {
+            return m_view.end();
+        }
+
+        template <component... JoinComponents>
+        auto join(this auto&& self)
+        {
+            return self.template join_mixin<view_type, JoinComponents...>(
+                std::forward<decltype(self)>(self).m_manager,
+                std::forward<decltype(self)>(self).m_view
+            );
+        }
+
+    private:
+        static auto make_view(component_manager& manager, View&& previous_view)
+        {
+            return std::ranges::cartesian_product_view{
+                std::move(previous_view),
+                detail::gather_components<Components...>(manager)
+            }
+                | std::views::transform([](auto&& pairs)
+                    {
+                        return detail::make_flat_tuple(
+                            std::get<0>(std::forward<decltype(pairs)>(pairs)),
+                            std::get<1>(std::forward<decltype(pairs)>(pairs)));
+                    });
+        }
+
+        component_manager& m_manager;
+        using view_type = decltype(make_view(
+            std::declval<component_manager&>(), std::declval<View>()
+        ));
+        view_type m_view;
+    };
+
+    template <component... Components>
+    struct query_components : public joinable_query_mixin
+    {
+        query_components(component_manager& manager)
+            : m_manager{ manager }
+            , m_view{ make_view(manager) }
+        { }
+
+        auto begin()
+        {
+            return m_view.begin();
+        }
+
+        auto end()
+        {
+            return m_view.end();
+        }
+
+        template <component... JoinComponents>
+        auto join(this auto&& self)
+        {
+            return self.template join_mixin<view_type, JoinComponents...>(
+                std::forward<decltype(self)>(self).m_manager,
+                std::forward<decltype(self)>(self).m_view
+            );
+        }
+
+    private:
+        static auto make_view(component_manager& manager)
+        {
+            return detail::gather_components<Components...>(manager);
         }
 
         component_manager& m_manager;
         using view_type = decltype(make_view(std::declval<component_manager&>()));
         view_type m_view;
     };
+
+    template <std::ranges::view ViewT, component... JoinComponents>
+    auto joinable_query_mixin::join_mixin(component_manager& manager, ViewT view)
+        -> query_join<ViewT, JoinComponents...>
+    {
+        return query_join<ViewT, JoinComponents...>{manager, std::move(view)};
+    }
 }

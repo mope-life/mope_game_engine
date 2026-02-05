@@ -153,26 +153,23 @@ namespace
 
     void opponent_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        for (auto&& [opponent, opponent_transform] : scene
-            .query<opponent_component, mope::transform_component>())
+        for (auto&& [opponent, opponent_transform, ball, ball_transform] : scene
+            .query<opponent_component, mope::transform_component>()
+            .join<ball_component, mope::transform_component>())
         {
-            for (auto&& [ball2, ball_transform] : scene
-                .query<ball_component, mope::transform_component>())
-            {
-                auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
-                auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
-                auto diff = ball_center - opponent_center;
+            auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
+            auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
+            auto diff = ball_center - opponent_center;
 
-                auto actual_change = std::copysign(
-                    std::min(
-                        static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
-                        std::abs(diff)
-                    ),
-                    diff
-                );
+            auto actual_change = std::copysign(
+                std::min(
+                    static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
+                    std::abs(diff)
+                ),
+                diff
+            );
 
-                opponent_transform.slide({ 0.f, actual_change, 0.f });
-            }
+            opponent_transform.slide({ 0.f, actual_change, 0.f });
         }
     }
 
