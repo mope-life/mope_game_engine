@@ -1,6 +1,7 @@
 #include "future.hxx"
 #include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
+#include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
@@ -28,17 +29,6 @@ namespace
     class pong : public mope::game_scene
     {
         void on_load(mope::game_engine& engine) override;
-
-    public:
-        void reset_round();
-
-        mope::entity_id player{ create_entity() };
-        mope::entity_id opponent{ create_entity() };
-        mope::entity_id ball{ create_entity() };
-        mope::entity_id top{ create_entity() };
-        mope::entity_id bottom{ create_entity() };
-        mope::entity_id player_score{ create_entity() };
-        mope::entity_id opponent_score{ create_entity() };
     };
 }
 
@@ -133,6 +123,8 @@ namespace
             paddle,
         } collision_type;
     };
+
+    struct reset_round_event {};
 
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
@@ -263,13 +255,13 @@ namespace
                 for (auto&& player : scene.query<player_component>()) {
                     ++player.score;
                 }
-                static_cast<pong&>(scene).reset_round();
+                scene.emplace_event<reset_round_event>();
             }
             else if (transform.x_position() + transform.x_size() < 0.0f) {
                 for (auto&& opponent : scene.query<opponent_component>()) {
                     ++opponent.score;
                 }
-                static_cast<pong&>(scene).reset_round();
+                scene.emplace_event<reset_round_event>();
             }
         }
     }
@@ -278,6 +270,46 @@ namespace
     {
         if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
             scene.set_done();
+        }
+    }
+
+    void reset_round(mope::game_scene& scene, reset_round_event)
+    {
+        for (auto&& ball : scene.query<ball_component>()) {
+            scene.set_components(
+                // Set the initial ball velocity
+                ball_component{
+                    ball.entity,
+                    { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
+                    static_cast<float>(std::rand() % 401 - 200),
+                    0.0f }
+                },
+                // Set the initial position of the ball
+                mope::transform_component{
+                    ball.entity,
+                    { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
+                    { PaddleWidth, PaddleWidth, 1.0f }
+                });
+        }
+
+        for (auto&& player : scene.query<player_component>()) {
+            scene.set_components(
+                // Set the initial position of the player
+                mope::transform_component{
+                    player.entity,
+                    { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
+        }
+
+        for (auto&& opponent : scene.query<opponent_component>()) {
+            scene.set_components(
+                // Set the initial position of the opponent
+                mope::transform_component{
+                    opponent.entity,
+                    { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
         }
     }
 }
@@ -294,11 +326,18 @@ namespace
         );
         set_projection_matrix(projection);
 
+        add_game_system<reset_round_event>(reset_round);
         add_game_system<mope::tick_event>(player_movement);
         add_game_system<mope::tick_event>(opponent_movement);
         add_game_system(std::make_unique<ball_movement>());
         add_game_system<mope::tick_event>(exit_on_escape);
         add_game_system<mope::tick_event>(end_round);
+
+        auto player{ create_entity() };
+        auto opponent{ create_entity() };
+        auto ball{ create_entity() };
+        auto top{ create_entity() };
+        auto bottom{ create_entity() };
 
         auto const& default_texture = engine.get_default_texture();
         set_components(
@@ -311,36 +350,7 @@ namespace
             ball_collider_component{ player, ball_collider_component::paddle },
             ball_collider_component{ opponent, ball_collider_component::paddle },
             ball_collider_component{ top, ball_collider_component::boundary },
-            ball_collider_component{ bottom, ball_collider_component::boundary }
-        );
-
-        reset_round();
-    }
-
-    void pong::reset_round()
-    {
-        set_components(
-            ball_component{
-                ball,
-                { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f
-                , static_cast<float>(std::rand() % 401 - 200)
-                , 0.0f }
-            },
-            mope::transform_component{
-                player,
-                { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                { PaddleWidth, PaddleHeight, 1.0f }
-            },
-            mope::transform_component{
-                opponent,
-                { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                { PaddleWidth, PaddleHeight, 1.0f }
-            },
-            mope::transform_component{
-                ball,
-                { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
-                { PaddleWidth, PaddleWidth, 1.0f }
-            },
+            ball_collider_component{ bottom, ball_collider_component::boundary },
             mope::transform_component{
                 top,
                 { -0.5f * OrthoWidth, -1.0f, 0.0f },
@@ -352,5 +362,7 @@ namespace
                 { 2.0f * OrthoWidth, 1.0f, 1.0f }
             }
         );
+
+        emplace_event<reset_round_event>();
     }
 }
