@@ -26,6 +26,15 @@
 
 namespace
 {
+    static constexpr auto OrthoWidth{ 1024.f };
+    static constexpr auto OrthoHeight{ 768.f };
+    static constexpr auto PaddleWidth{ 12.f };
+    static constexpr auto PaddleHeight{ 80.f };
+    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
+}
+
+namespace
+{
     class pong : public mope::game_scene
     {
         void on_load(mope::I_game_engine& engine) override;
@@ -80,7 +89,11 @@ namespace
 
 MAIN()
 {
-    auto window = mope::glfw::window{ 1024, 768, "Pong" };
+    auto window = mope::glfw::window{
+        static_cast<int>(OrthoWidth),
+        static_cast<int>(OrthoHeight),
+        "Pong"
+    };
     window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
     logger log;
 
@@ -94,12 +107,6 @@ MAIN()
 
 namespace
 {
-    static constexpr auto OrthoWidth{ 1024.f };
-    static constexpr auto OrthoHeight{ 768.f };
-    static constexpr auto PaddleWidth{ 12.f };
-    static constexpr auto PaddleHeight{ 80.f };
-    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
-
     struct player_component : public mope::entity_component
     {
         unsigned int score;
@@ -199,7 +206,7 @@ namespace
         {
             auto previous_y = transform.position().y();
             auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
-            auto y_delta = event.inputs.cursor_deltas.y();
+            auto y_delta = -event.inputs.cursor_deltas.y();
             auto new_y = std::max(
                 std::min(y_delta + previous_y, OrthoHeight - min_showing),
                 min_showing - transform.size().y()
@@ -374,8 +381,8 @@ namespace
         // Random-number integrity is not paramount for our purposes.
         std::srand(static_cast<unsigned int>(std::time(0)));
 
-        mope::mat4f projection = mope::gl::orthographic_projection_matrix(
-            0, OrthoWidth, 0, OrthoHeight, -10, 10
+        auto projection = mope::gl::orthographic_projection_matrix(
+            0.0f, OrthoWidth, 0.0f, OrthoHeight, 10.0f, -10.0f
         );
         set_projection_matrix(projection);
 
