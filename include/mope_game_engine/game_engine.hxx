@@ -10,6 +10,7 @@ namespace mope
     struct I_logger;
     class I_game_window;
     class game_scene;
+    struct font;
 } // namespace mope
 
 namespace mope
@@ -29,6 +30,7 @@ namespace mope
         // The game engine does NOT take ownership of the logger pointer. You
         // are resposible for freeing it after run() has returned.
         virtual void run(I_game_window& window, I_logger* = nullptr) = 0;
+        virtual auto make_font(char const* ttf_path, int face_index, int instance_index = 0) -> font = 0;
         virtual auto get_default_texture() const -> gl::texture const& = 0;
     };
 } // namespace mope

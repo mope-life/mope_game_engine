@@ -1,8 +1,10 @@
 #include "mope_game_engine/game_engine.hxx"
 
+#include "freetype.hxx"
 #include "glad/glad.h"
 #include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/events/tick.hxx"
+#include "mope_game_engine/font.hxx"
 #include "mope_game_engine/game_engine_error.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_window.hxx"
@@ -34,6 +36,7 @@ namespace mope
         void set_tick_rate(double hz_rate) override;
         void add_scene(std::unique_ptr<game_scene> scene) override;
         void run(I_game_window& window, I_logger* logger) override;
+        auto make_font(char const* ttf_path, int face_index, int instance_index = 0) -> font override;
         auto get_default_texture() const -> gl::texture const& override;
 
         void prepare_gl_resources(I_logger* logger);
@@ -48,6 +51,7 @@ namespace mope
         double m_tick_time;
         input_state m_input_state;
         gl::texture m_default_texture;
+        FT_Library m_ft_library;
     };
 }
 
@@ -101,10 +105,17 @@ mope::game_engine::game_engine()
     , m_scenes{ }
     , m_tick_time{ 0.0 }
     , m_default_texture{ }
+    , m_ft_library{ nullptr }
 {
 }
 
-mope::game_engine::~game_engine() = default;
+mope::game_engine::~game_engine()
+{
+    if (nullptr != m_ft_library) {
+        FT_Done_FreeType(m_ft_library);
+        m_ft_library = nullptr;
+    }
+}
 
 void mope::game_engine::destroy()
 {
@@ -269,6 +280,30 @@ void mope::game_engine::run(I_game_window& window, I_logger* logger)
             );
         }
     }
+}
+
+auto mope::game_engine::make_font(char const* ttf_path, int face_index, int instance_index) -> font
+{
+    if (nullptr == m_ft_library) {
+        check_ft_error(
+            FT_Init_FreeType(&m_ft_library),
+            "initializing FreeType library"
+        );
+    }
+
+    FT_Face face = nullptr;
+
+    /// TODO: We definitely shouldn't actually throw here, since we're taking a
+    /// path from the user.
+    check_ft_error(FT_New_Face(
+        m_ft_library,
+        ttf_path,
+        static_cast<FT_Long>(face_index) | (static_cast<FT_Long>(instance_index) << 16),
+        &face),
+        "creating font face"
+    );
+
+    return font{face};
 }
 
 auto mope::game_engine::get_default_texture() const -> gl::texture const&
