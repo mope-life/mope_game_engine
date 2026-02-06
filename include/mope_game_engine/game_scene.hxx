@@ -23,6 +23,7 @@ namespace mope
     class game_engine;
     class sprite_renderer;
     struct input_state;
+    struct I_logger;
 }
 
 namespace mope
@@ -76,6 +77,9 @@ namespace mope
 
         auto create_entity() -> entity_id;
         void destroy_entity(entity_id entity);
+
+        /// Same as `get_component<I_logger>()`.
+        auto logger() -> I_logger*;
 
         /// Used by the @ref game_engine to move the scene forward by one time step.
         void tick(double time_step, input_state const& inputs);

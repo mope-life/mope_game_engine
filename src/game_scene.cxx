@@ -1,6 +1,7 @@
 #include "mope_game_engine/game_scene.hxx"
 
 #include "mope_game_engine/components/component.hxx"
+#include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
@@ -46,6 +47,11 @@ void mope::game_scene::destroy_entity(entity_id entity)
     for (auto&& manager : m_component_stores) {
         manager.second->remove(entity);
     }
+}
+
+auto mope::game_scene::logger() -> I_logger*
+{
+    return get_component<I_logger>();
 }
 
 auto mope::game_scene::ensure_renderer() -> sprite_renderer&
