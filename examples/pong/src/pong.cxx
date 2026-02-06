@@ -145,6 +145,53 @@ namespace
 
     struct all_collisions_resolved_event {};
 
+    void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
+    {
+        if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
+            scene.set_done();
+        }
+    }
+
+    void reset_round(mope::game_scene& scene, reset_round_event const&)
+    {
+        for (auto&& ball : scene.query<ball_component>()) {
+            scene.set_components(
+                // Set the initial ball velocity
+                ball_component{
+                    ball.entity,
+                    { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
+                    static_cast<float>(std::rand() % 401 - 200),
+                    0.0f }
+                },
+                // Set the initial position of the ball
+                mope::transform_component{
+                    ball.entity,
+                    { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
+                    { PaddleWidth, PaddleWidth, 1.0f }
+                });
+        }
+
+        for (auto&& player : scene.query<player_component>()) {
+            scene.set_components(
+                // Set the initial position of the player
+                mope::transform_component{
+                    player.entity,
+                    { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
+        }
+
+        for (auto&& opponent : scene.query<opponent_component>()) {
+            scene.set_components(
+                // Set the initial position of the opponent
+                mope::transform_component{
+                    opponent.entity,
+                    { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
+        }
+    }
+
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
         for (auto&& [player, transform] : scene
@@ -316,53 +363,6 @@ namespace
                 }
                 scene.emplace_event<reset_round_event>();
             }
-        }
-    }
-
-    void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
-    {
-        if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
-            scene.set_done();
-        }
-    }
-
-    void reset_round(mope::game_scene& scene, reset_round_event const&)
-    {
-        for (auto&& ball : scene.query<ball_component>()) {
-            scene.set_components(
-                // Set the initial ball velocity
-                ball_component{
-                    ball.entity,
-                    { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
-                    static_cast<float>(std::rand() % 401 - 200),
-                    0.0f }
-                },
-                // Set the initial position of the ball
-                mope::transform_component{
-                    ball.entity,
-                    { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
-                    { PaddleWidth, PaddleWidth, 1.0f }
-                });
-        }
-
-        for (auto&& player : scene.query<player_component>()) {
-            scene.set_components(
-                // Set the initial position of the player
-                mope::transform_component{
-                    player.entity,
-                    { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                    { PaddleWidth, PaddleHeight, 1.0f }
-                });
-        }
-
-        for (auto&& opponent : scene.query<opponent_component>()) {
-            scene.set_components(
-                // Set the initial position of the opponent
-                mope::transform_component{
-                    opponent.entity,
-                    { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                    { PaddleWidth, PaddleHeight, 1.0f }
-                });
         }
     }
 }
