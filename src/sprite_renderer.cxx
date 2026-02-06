@@ -4,7 +4,6 @@
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
 #include "mope_game_engine/game_scene.hxx"
-#include "mope_game_engine/game_system.hxx"
 #include "mope_vec/mope_vec.hxx"
 #include "vao.hxx"
 
@@ -82,20 +81,19 @@ void main()
 
 void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
-    for (auto&& [sprite, transform]
-        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
-    {
+    for (auto&& transform : scene.query<transform_component>()) {
         transform.save_model();
     }
 }
 
 void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
-    for (auto&& [sprite, transform]
-        : detail::component_gatherer<sprite_component, transform_component>::gather(scene))
+    for (auto&& [sprite, transform] : scene
+        .query<sprite_component, mope::transform_component>())
     {
         sprite.texture.bind();
-        m_shader.set_uniform("u_model", transform.blend(static_cast<float>(alpha)));
+        auto alphaf = static_cast<float>(alpha);
+        m_shader.set_uniform("u_model", transform.blend(alphaf));
         m_vao.bind();
         ::glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, 0);
     }

@@ -1,7 +1,7 @@
 #include "future.hxx"
 #include "glfw_game_window/glfw_game_window.hxx"
 #include "mope_game_engine/collisions.hxx"
-#include "mope_game_engine/component.hxx"
+#include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
@@ -29,17 +29,6 @@ namespace
     class pong : public mope::game_scene
     {
         void on_load(mope::game_engine& engine) override;
-
-    public:
-        void reset_round();
-
-        mope::entity player{ create_entity() };
-        mope::entity opponent{ create_entity() };
-        mope::entity ball{ create_entity() };
-        mope::entity top{ create_entity() };
-        mope::entity bottom{ create_entity() };
-        mope::entity player_score{ create_entity() };
-        mope::entity opponent_score{ create_entity() };
     };
 }
 
@@ -126,20 +115,87 @@ namespace
         mope::vec3f velocity;
     };
 
+    enum class collision_type
+    {
+        normal,
+        erratic,    ///< Adds vertical velocity to the ball.
+    };
+
     struct ball_collider_component : public mope::entity_component
     {
-        enum
-        {
-            boundary,
-            paddle,
-        } collision_type;
+        collision_type type;
     };
+
+    struct reset_round_event {};
+
+    struct collision_detected_event
+    {
+        double previous_remaining_time;
+        mope::collision collision;
+        collision_type type;
+        ball_component& ball;
+        mope::transform_component& ball_transform;
+        mope::transform_component& collider_transform;
+    };
+
+    struct collision_resolved_event
+    {
+        double remaining_time;
+    };
+
+    struct all_collisions_resolved_event {};
+
+    void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
+    {
+        if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
+            scene.set_done();
+        }
+    }
+
+    void reset_round(mope::game_scene& scene, reset_round_event const&)
+    {
+        for (auto&& ball : scene.query<ball_component>()) {
+            scene.set_components(
+                // Set the initial ball velocity
+                ball_component{
+                    ball.entity,
+                    { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
+                    static_cast<float>(std::rand() % 401 - 200),
+                    0.0f }
+                },
+                // Set the initial position of the ball
+                mope::transform_component{
+                    ball.entity,
+                    { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
+                    { PaddleWidth, PaddleWidth, 1.0f }
+                });
+        }
+
+        for (auto&& player : scene.query<player_component>()) {
+            scene.set_components(
+                // Set the initial position of the player
+                mope::transform_component{
+                    player.entity,
+                    { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
+        }
+
+        for (auto&& opponent : scene.query<opponent_component>()) {
+            scene.set_components(
+                // Set the initial position of the opponent
+                mope::transform_component{
+                    opponent.entity,
+                    { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                    { PaddleWidth, PaddleHeight, 1.0f }
+                });
+        }
+    }
 
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        for (auto&& [player, transform] : mope::component_query<
-            player_component,
-            mope::transform_component>(scene))
+        for (auto&& [player, transform] : scene
+            .query<player_component, mope::transform_component>())
         {
             auto previous_y = transform.position().y();
             auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
@@ -154,138 +210,159 @@ namespace
 
     void opponent_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
-        for (auto&& [opponent, opponent_transform, ball_components] : mope::component_query<
-            opponent_component,
-            mope::transform_component,
-            mope::relationship<ball_component, mope::transform_component>>(scene))
+        for (auto&& [opponent, opponent_transform, ball, ball_transform] : scene
+            .query<opponent_component, mope::transform_component>()
+            .join<ball_component, mope::transform_component>())
         {
-            for (auto&& [ball, ball_transform] : ball_components) {
-                auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
-                auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
-                auto diff = ball_center - opponent_center;
+            auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
+            auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
+            auto diff = ball_center - opponent_center;
 
-                auto actual_change = std::copysign(
-                    std::min(
-                        static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
-                        std::abs(diff)
-                    ),
-                    diff
-                );
+            auto actual_change = std::copysign(
+                std::min(
+                    static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
+                    std::abs(diff)
+                ),
+                diff
+            );
 
-                opponent_transform.slide({ 0.f, actual_change, 0.f });
-            }
+            opponent_transform.slide({ 0.f, actual_change, 0.f });
         }
     }
 
-    class ball_movement : public mope::game_system<mope::tick_event>
+    class ball_movement : public mope::game_system<mope::tick_event, collision_resolved_event>
     {
-        std::vector<std::tuple<
-            ball_collider_component&,
-            mope::transform_component&>> m_collider_cache;
-
-        std::vector<std::pair<
-            std::size_t,
-            std::optional<mope::collision>>> m_collision_cache;
+        std::vector<
+            std::optional<std::tuple<mope::collision, collision_type, mope::transform_component&>>
+        > m_collision_cache;
 
         void operator()(mope::game_scene& scene, mope::tick_event const& event) override
         {
-            for (auto&& [ball, ball_transform, collider_components] : mope::component_query<
-                ball_component,
-                mope::transform_component,
-                mope::relationship<ball_collider_component, mope::transform_component>>(scene))
+            find_collisions(scene, event.time_step);
+        }
+
+        // Resolving a collision might cause more collisions, so...
+        // Each time we resolve a collision, we look for more collisions.
+        void operator()(mope::game_scene& scene, collision_resolved_event const& event) override
+        {
+            find_collisions(scene, event.remaining_time);
+        }
+
+        void find_collisions(mope::game_scene& scene, double remaining_time)
+        {
+            if (remaining_time <= 0.0) {
+                scene.emplace_event<all_collisions_resolved_event>();
+                return;
+            }
+
+            for (auto&& [ball, ball_transform] : scene
+                .query<ball_component, mope::transform_component>())
             {
-                // The nested range is single-pass (std::ranges::input_range) only.
-                // So we need to cache the elements in case we need to make multiple
-                // passes.
-                future::assign_range(m_collider_cache, collider_components);
-                double remaining_time = event.time_step;
+                auto v = scene.query<ball_collider_component, mope::transform_component>();
 
-                do {
-                    future::assign_range(
+                future::assign_range(
+                    m_collision_cache,
+                    v | std::views::transform([&ball_transform, &ball](auto&& collider_components)
+                        {
+                            auto&& [collider, collider_transform] = collider_components;
+                            return mope::axis_aligned_object_collision(
+                                ball_transform.position(),
+                                ball_transform.size(),
+                                ball.velocity,
+                                collider_transform.position(),
+                                collider_transform.size()
+                            ).transform([&collider, &collider_transform](auto&& collision)
+                                {
+                                    return std::make_tuple(collision, collider.type, std::ref(collider_transform));
+                                });
+                        })
+                    | std::views::filter([remaining_time](auto const& opt)
+                        {
+                            if (opt.has_value()) {
+                                auto&& contact_time = std::get<0>(*opt).contact_time;
+                                return !std::signbit(contact_time) && contact_time < remaining_time;
+                            }
+                            else {
+                                return false;
+                            }
+                        })
+                );
+
+                // There is at least once collision this frame.
+                if (!m_collision_cache.empty()) {
+                    // Find the collision that happens first, determined by the minimum contact time.
+                    auto&& [collision, type, collider_transform] = *std::ranges::min(
                         m_collision_cache,
-                        m_collider_cache
-                        | std::views::enumerate
-                        | std::views::transform([&ball_transform, &ball](auto&& pair) {
-                            auto&& [i, collider_pair] = pair;
-                            auto&& collider_transform = std::get<1>(collider_pair);
-                            return std::make_pair(
-                                i,
-                                mope::axis_aligned_object_collision(
-                                    ball_transform.position(),
-                                    ball_transform.size(),
-                                    ball.velocity,
-                                    collider_transform.position(),
-                                    collider_transform.size()
-                                )
-                            );
-                            })
-                        | std::views::filter([remaining_time](auto&& pair) {
-                            auto& collision = pair.second;
-                            return collision.has_value()
-                                && !std::signbit(collision->contact_time)
-                                && collision->contact_time < remaining_time;
-                            })
+                        std::ranges::less{},
+                        [](auto&& opt) { return std::get<0>(*opt).contact_time; });
+
+                    scene.emplace_event<collision_detected_event>(
+                        remaining_time,
+                        std::move(collision),
+                        type,
+                        ball,
+                        ball_transform,
+                        collider_transform
                     );
-
-                    if (!m_collision_cache.empty()) {
-                        auto&& [i, collision] = std::ranges::min(
-                            m_collision_cache,
-                            std::ranges::less{},
-                            [](auto&& pair) { return pair.second->contact_time; });
-                        auto&& [collider, collider_transform] = m_collider_cache.at(i);
-
-                        // Move the ball by the amount of time before the collision
-                        // occurred, then change course.
-                        ball_transform.slide(static_cast<mope::vec3f>(collision->contact_time * ball.velocity));
-                        remaining_time -= collision->contact_time;
-
-                        auto velocity = static_cast<mope::vec3d>(ball.velocity);
-                        velocity -= 2 * velocity.dot(collision->contact_normal) * collision->contact_normal;
-
-                        if (collider.paddle == collider.collision_type) {
-                            auto diff = collision->contact_point.y()
-                                - (collider_transform.y_position() + 0.5f * collider_transform.y_size());
-                            velocity.y() = static_cast<float>(velocity.y() + 4.0 * diff);
-                        }
-
-                        ball.velocity = static_cast<mope::vec3f>(velocity);
-                    }
-                    else {
-                        // No collision found. Move the ball the rest of the way
-                        // along its path.
-                        ball_transform.slide(static_cast<mope::vec3f>(remaining_time * ball.velocity));
-                        remaining_time = 0.0;
-                    }
-                } while (remaining_time > 0.0);
+                }
+                else {
+                    // No collision found. Move the ball the rest of the way along its path.
+                    ball_transform.slide(static_cast<mope::vec3f>(remaining_time * ball.velocity));
+                    scene.emplace_event<all_collisions_resolved_event>();
+                }
             }
         }
     };
 
-    void end_round(mope::game_scene& scene, mope::tick_event const&)
+    void resolve_collisions(mope::game_scene& scene, collision_detected_event const& event)
     {
-        for (auto&& [ball, transform] : mope::component_query<
-            ball_component,
-            mope::transform_component>(scene))
-        {
-            if (transform.x_position() > OrthoWidth) {
-                for (auto&& player : mope::component_query<player_component>(scene)) {
-                    ++player.score;
-                }
-                static_cast<pong&>(scene).reset_round();
-            }
-            else if (transform.x_position() + transform.x_size() < 0.0f) {
-                for (auto&& opponent : mope::component_query<opponent_component>(scene)) {
-                    ++opponent.score;
-                }
-                static_cast<pong&>(scene).reset_round();
-            }
+        // Move the ball by the amount of time before the collision occurred.
+        event.ball_transform.slide(
+            static_cast<mope::vec3f>(event.collision.contact_time * event.ball.velocity)
+        );
+
+        auto new_velocity = static_cast<mope::vec3d>(event.ball.velocity);
+
+        // Subtract twice the magnitude of the velocity projected along the
+        // contact normal.
+        // This has the effect of reversing our velocity on that axis.
+        new_velocity -= 2 * new_velocity.dot(event.collision.contact_normal)
+            * event.collision.contact_normal;
+
+        // If we bounced off a paddle, add vertical velocity away from the
+        // center of the paddle.
+        if (collision_type::erratic == event.type) {
+            auto diff = event.collision.contact_point.y()
+                - (event.collider_transform.y_position() + 0.5f * event.collider_transform.y_size());
+            new_velocity.y() = static_cast<float>(event.ball.velocity.y() + 4.0 * diff);
         }
+
+        event.ball.velocity = static_cast<mope::vec3f>(new_velocity);
+
+        // Tell the collision detection system to look for more collisions with
+        // our new velocity and remaining time.
+        scene.emplace_event<collision_resolved_event>(
+            event.previous_remaining_time - event.collision.contact_time
+        );
     }
 
-    void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
+    void end_round(mope::game_scene& scene, all_collisions_resolved_event const&)
     {
-        if (event.inputs.pressed_keys.test(mope::glfw::ESCAPE)) {
-            scene.set_done();
+        for (auto&& [ball, transform] : scene
+            .query<ball_component, mope::transform_component>())
+        {
+            if (transform.x_position() > OrthoWidth) {
+                for (auto&& player : scene.query<player_component>()) {
+                    ++player.score;
+                }
+                scene.emplace_event<reset_round_event>();
+            }
+            else if (transform.x_position() + transform.x_size() < 0.0f) {
+                for (auto&& opponent : scene.query<opponent_component>()) {
+                    ++opponent.score;
+                }
+                scene.emplace_event<reset_round_event>();
+            }
         }
     }
 }
@@ -302,11 +379,19 @@ namespace
         );
         set_projection_matrix(projection);
 
-        add_game_system<mope::tick_event>(player_movement);
-        add_game_system<mope::tick_event>(exit_on_escape);
-        add_game_system<mope::tick_event>(opponent_movement);
-        add_game_system(std::make_unique<ball_movement>());
-        add_game_system<mope::tick_event>(end_round);
+        add_game_system(exit_on_escape);
+        add_game_system(reset_round);
+        add_game_system(player_movement);
+        add_game_system(opponent_movement);
+        emplace_game_system<ball_movement>();
+        add_game_system(resolve_collisions);
+        add_game_system(end_round);
+
+        auto player = create_entity();
+        auto opponent = create_entity();
+        auto ball = create_entity();
+        auto top = create_entity();
+        auto bottom = create_entity();
 
         auto const& default_texture = engine.get_default_texture();
         set_components(
@@ -316,39 +401,10 @@ namespace
             ball_component{ ball, { 0.0f, 0.0f, 0.0f } },
             player_component{ player, 0 },
             opponent_component{ opponent, 0 },
-            ball_collider_component{ player, ball_collider_component::paddle },
-            ball_collider_component{ opponent, ball_collider_component::paddle },
-            ball_collider_component{ top, ball_collider_component::boundary },
-            ball_collider_component{ bottom, ball_collider_component::boundary }
-        );
-
-        reset_round();
-    }
-
-    void pong::reset_round()
-    {
-        set_components(
-            ball_component{
-                ball,
-                { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f
-                , static_cast<float>(std::rand() % 401 - 200)
-                , 0.0f }
-            },
-            mope::transform_component{
-                player,
-                { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                { PaddleWidth, PaddleHeight, 1.0f }
-            },
-            mope::transform_component{
-                opponent,
-                { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                { PaddleWidth, PaddleHeight, 1.0f }
-            },
-            mope::transform_component{
-                ball,
-                { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
-                { PaddleWidth, PaddleWidth, 1.0f }
-            },
+            ball_collider_component{ player, collision_type::erratic },
+            ball_collider_component{ opponent, collision_type::erratic },
+            ball_collider_component{ top, collision_type::normal },
+            ball_collider_component{ bottom, collision_type::normal },
             mope::transform_component{
                 top,
                 { -0.5f * OrthoWidth, -1.0f, 0.0f },
@@ -360,5 +416,7 @@ namespace
                 { 2.0f * OrthoWidth, 1.0f, 1.0f }
             }
         );
+
+        emplace_event<reset_round_event>();
     }
 }

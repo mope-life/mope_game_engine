@@ -1,9 +1,10 @@
 #include "mope_game_engine/game_scene.hxx"
 
-#include "mope_game_engine/component.hxx"
+#include "mope_game_engine/components/component.hxx"
+#include "mope_game_engine/components/logger.hxx"
+#include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
-
 #include "shader.hxx"
 #include "sprite_renderer.hxx"
 
@@ -11,8 +12,7 @@
 #include <utility>
 
 mope::game_scene::game_scene()
-    : m_next_entity{ 0 }
-    , m_component_managers{ }
+    : m_last_entity{ NoEntity }
     , m_game_systems{ }
     , m_sprite_renderer{ }
     , m_done{ false }
@@ -36,17 +36,22 @@ void mope::game_scene::set_projection_matrix(mat4f const& projection)
     ensure_renderer().m_shader.set_uniform("u_projection", projection);
 }
 
-auto mope::game_scene::create_entity() -> entity
+auto mope::game_scene::create_entity() -> entity_id
 {
-    // Leave 0 as an invalid entity for now.
-    return ++m_next_entity;
+    // Don't return the special NoEntity (0).
+    return ++m_last_entity;
 }
 
-void mope::game_scene::destroy_entity(entity e)
+void mope::game_scene::destroy_entity(entity_id entity)
 {
-    for (auto&& manager : m_component_managers) {
-        manager.second->remove(e);
+    for (auto&& manager : m_component_stores) {
+        manager.second->remove(entity);
     }
+}
+
+auto mope::game_scene::logger() -> I_logger*
+{
+    return get_component<I_logger>();
 }
 
 auto mope::game_scene::ensure_renderer() -> sprite_renderer&
@@ -79,12 +84,12 @@ void mope::game_scene::render(double alpha)
     ensure_renderer().render(*this, alpha);
 }
 
-auto mope::event_pool::events() -> decltype(m_events) const&
+auto mope::detail::event_pool::events() -> decltype(m_events) const&
 {
     return m_events;
 }
 
-void mope::event_pool::clear()
+void mope::detail::event_pool::clear()
 {
     m_events.clear();
 }
