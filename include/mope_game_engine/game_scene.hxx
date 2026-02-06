@@ -155,7 +155,14 @@ namespace mope
         void add_game_system_imp(game_system<Events...>* system)
         {
             auto shared = std::shared_ptr<game_system<Events...>>{ system };
-            (m_game_systems[typeid(Events)].push_back(shared), ...);
+
+            (m_game_systems[typeid(Events)].emplace_back(
+                // This is the ***aliasing constructor*** of std::shared_ptr<T>.
+                // The `shared_ptr`s will dereference to the bases, which are
+                // `virtual_event_handler<Event>`s, but will share ownership and
+                // lifetime of the derived class, `game_system<Events...>`.
+                shared, static_cast<virtual_event_handler<Events>*>(system)
+            ), ...);
         }
 
         entity_id m_last_entity;
