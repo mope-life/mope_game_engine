@@ -1,10 +1,10 @@
 #pragma once
 
 #include "mope_game_engine/components/component.hxx"
+#include "mope_game_engine/iterable_box.hxx"
 
 #include <memory>
 #include <ranges>
-#include <span>
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
@@ -91,12 +91,7 @@ namespace mope::detail
 
         auto all()
         {
-            if (auto ptr = get(); nullptr != ptr) {
-                return std::span{ ptr, 1 };
-            }
-            else {
-                return std::span<Component>{ };
-            }
+            return iterable_box{ get() };
         }
 
     private:
