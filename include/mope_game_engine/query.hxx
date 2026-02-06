@@ -152,12 +152,15 @@ namespace mope
         }
 
         template <component... JoinComponents>
-        auto join(this auto&& self)
+        auto join() &
         {
-            return self.template join_mixin<view_type, JoinComponents...>(
-                std::forward<decltype(self)>(self).m_manager,
-                std::forward<decltype(self)>(self).m_view
-            );
+            return join_mixin<view_type, JoinComponents...>(m_manager, m_view);
+        }
+
+        template <component... JoinComponents>
+        auto join() &&
+        {
+            return join_mixin<view_type, JoinComponents...>(m_manager, std::move(m_view));
         }
 
     private:
@@ -201,12 +204,15 @@ namespace mope
         }
 
         template <component... JoinComponents>
-        auto join(this auto&& self)
+        auto join() &
         {
-            return self.template join_mixin<view_type, JoinComponents...>(
-                std::forward<decltype(self)>(self).m_manager,
-                std::forward<decltype(self)>(self).m_view
-            );
+            return join_mixin<view_type, JoinComponents...>(m_manager, m_view);
+        }
+
+        template <component... JoinComponents>
+        auto join() &&
+        {
+            return join_mixin<view_type, JoinComponents...>(m_manager, std::move(m_view));
         }
 
     private:
