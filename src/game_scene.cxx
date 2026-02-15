@@ -2,7 +2,6 @@
 
 #include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/components/logger.hxx"
-#include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
 #include "shader.hxx"
@@ -68,28 +67,17 @@ void mope::game_scene::tick(double time_step, input_state const& inputs)
     renderer.pre_tick(*this);
 
     emplace_event<tick_event>(time_step, inputs);
-    auto& events = m_event_pool.events();
-    for (auto i = 0uz; i < events.size(); ++i) {
+    for (auto i = 0uz; i < m_events.size(); ++i) {
         // Processing events potentially pushes more events, which potentially
         // invalidates any references we take here. Since this seems like a path
         // to madness, we are intentionally copying here.
-        auto [event, process_event] = events[i];
+        auto [event, process_event] = m_events[i];
         process_event(*this, event);
     }
-    m_event_pool.clear();
+    m_events.clear();
 }
 
 void mope::game_scene::render(double alpha)
 {
     ensure_renderer().render(*this, alpha);
-}
-
-auto mope::detail::event_pool::events() -> decltype(m_events) const&
-{
-    return m_events;
-}
-
-void mope::detail::event_pool::clear()
-{
-    m_events.clear();
 }

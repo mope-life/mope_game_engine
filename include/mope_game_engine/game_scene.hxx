@@ -2,20 +2,16 @@
 
 #include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/component_manager.hxx"
-#include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/game_system.hxx"
 #include "mope_game_engine/query.hxx"
 #include "mope_vec/mope_vec.hxx"
 
-#include <bitset>
-#include <concepts>
 #include <memory>
-#include <ranges>
+#include <memory_resource>
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace mope
@@ -134,16 +130,20 @@ namespace mope
             add_game_system_imp(new System(std::forward<Args>(args)...));
         }
 
+        /// Place an event in the event queue for this frame.
         template <typename Event>
         void push_event(Event&& event)
         {
-            m_event_pool.store<std::remove_cvref_t<Event>>(std::forward<Event>(event));
+            emplace_event<std::remove_cvref_t<Event>>(std::forward<Event>(event));
         }
 
+        /// Construct an event (in place) in the event queue for this frame.
         template <typename Event, typename... Args>
         void emplace_event(Args&&... args)
         {
-            m_event_pool.store<Event>(std::forward<Args>(args)...);
+            auto ptr = m_event_pool.allocate(sizeof(Event), alignof(Event));
+            auto event = new (ptr) Event(std::forward<Args>(args)...);
+            m_events.emplace_back(static_cast<void*>(event), process_event<Event>);
         }
 
         template <component... Components>
@@ -169,16 +169,31 @@ namespace mope
             ), ...);
         }
 
+        template <typename Event>
+        static void process_event(game_scene& scene, void* ptr)
+        {
+            auto event = static_cast<Event*>(ptr);
+
+            for (auto&& system_base_ptr : scene.m_game_systems[typeid(Event)]) {
+                auto& system = *static_cast<virtual_event_handler<Event>*>(system_base_ptr.get());
+                system(scene, *event);
+            }
+
+            if constexpr (!std::is_trivially_destructible_v<Event>) {
+                event->~Event();
+            }
+
+            scene.m_event_pool.deallocate(ptr, sizeof(Event), alignof(Event));
+        }
+
         entity_id m_last_entity;
         std::unordered_map<std::type_index, std::vector<std::shared_ptr<void>>>
             m_game_systems;
-        detail::event_pool m_event_pool;
+        std::pmr::unsynchronized_pool_resource
+            m_event_pool;
+        std::vector<std::pair<void*, void(*)(game_scene&, void*)>>
+            m_events;
         std::unique_ptr<sprite_renderer> m_sprite_renderer;
         bool m_done;
-
-        template <typename Event>
-        friend void detail::event_pool::process_event(game_scene& scene, void* ptr);
     };
 }
-
-#include "mope_game_engine/event_pool.inl"
