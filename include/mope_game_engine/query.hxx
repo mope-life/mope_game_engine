@@ -1,28 +1,111 @@
 #pragma once
 
+#include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/component_manager.hxx"
 
-#include <ranges>
+#include <algorithm>
+#include <concepts>
+#include <functional>
 #include <optional>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace mope
+{
+    template <typename, typename...>
+    struct related;
+
+    template <typename T>
+    concept entity_queryable =
+        detail::specialization<T, related> || derived_from_entity_component<T>;
+
+    /// A query for a relationship on an entity, optionally including additional
+    /// components that the related entity should possess.
+    template<
+        std::derived_from<relationship> Relationship,
+        entity_queryable... Queryables>
+    struct related<Relationship, Queryables...> {};
+
+    /// A query for a group of components belonging to a single entity.
+    template <
+        entity_queryable Queryable,
+        entity_queryable... Queryables>
+    struct entity_has {};
+
+    /// A subquery that can be crossed (by way of cartesian product) with an
+    /// unrelated outside query.
+    template <
+        entity_queryable Queryable,
+        entity_queryable... Queryables>
+    struct cross {};
+
+    /// A query for one or more singleton components.
+    template <
+        derived_from_singleton_component Component,
+        derived_from_singleton_component... Components>
+    struct singletons {};
+
+    template <typename T>
+    concept queryable =
+        detail::specialization<T, entity_has>
+        || detail::specialization<T, cross>
+        || detail::specialization<T, singletons>;
+
+    template <queryable... Queryables>
+    struct query;
+}
 
 namespace mope::detail
 {
-    template <derived_from_entity_component Component>
-    auto get_from_manager(component_manager& manager, entity_id entity)
+    template <typename T>
+    struct tuplify
     {
-        return manager.get_component<Component>(entity);
+        static auto operator()(T& t)
+        {
+            return std::forward_as_tuple(t);
+        }
+
+        static auto operator()(T&& t)
+        {
+            return std::make_tuple(t);
+        }
+    };
+
+    template <typename... T>
+    struct tuplify<std::tuple<T...>>
+    {
+        template <typename U>
+            requires std::same_as<std::tuple<T...>, std::remove_cvref_t<U>>
+        static decltype(auto) operator()(U&& u)
+        {
+            return std::forward<U>(u);
+        }
+    };
+
+    auto make_flat_tuple(auto&&... elements)
+    {
+        return std::tuple_cat(
+            tuplify<std::remove_cvref_t<decltype(elements)>>{}(std::forward<decltype(elements)>(elements))...
+        );
     }
 
-    template <derived_from_singleton_component Component>
-    auto get_from_manager(component_manager& manager, entity_id)
+    auto make_flat_tuple(specialization<std::tuple> auto&& tup)
     {
-        return manager.get_component<Component>();
+        return std::apply([](auto&&... elements)
+            {
+                return make_flat_tuple(std::forward<decltype(elements)>(elements)...);
+            }, std::forward<decltype(tup)>(tup));
     }
 
     template <typename T>
     auto is_not_null(T const& t) -> bool
     {
-        if constexpr (std::is_pointer_v<T>) {
+        if constexpr (std::is_null_pointer_v<T>) {
+            return false;
+        }
+        else if constexpr (std::is_pointer_v<T>) {
             return t != nullptr;
         }
         else {
@@ -34,202 +117,184 @@ namespace mope::detail
     decltype(auto) deref(T&& t)
     {
         if constexpr (std::is_pointer_v<std::remove_reference_t<T>>) {
-            return *t;
+            return std::ref(*t);
         }
         else {
             return std::forward<T>(t);
         }
     }
 
-    template <typename T>
-    struct wrap
+    template <entity_queryable... Queryables>
+    auto get_queryables_for_entity(component_manager& manager, entity_id entity);
+
+    template <entity_queryable Queryable>
+    struct resolve_entity_queryable;
+
+    template <derived_from_entity_component Component>
+    struct resolve_entity_queryable<Component>
     {
-        template <typename U>
-            requires std::same_as<T, std::remove_cvref_t<U>>
-        static auto operator()(U&& u)
+        static auto one(component_manager& manager, entity_id entity)
         {
-            return std::forward_as_tuple(u);
+            return manager.get_component<Component>(entity);
+        }
+
+        static auto all(component_manager& manager)
+        {
+            return manager.get_components<Component>();
         }
     };
 
-    template <typename... T>
-    struct wrap<std::tuple<T...>>
+    template <
+        std::derived_from<relationship> Relationship,
+        entity_queryable... Queryables>
+    struct resolve_entity_queryable<related<Relationship, Queryables...>>
     {
-        template <typename U>
-            requires std::same_as<std::tuple<T...>, std::remove_cvref_t<U>>
-        static decltype(auto) operator()(U&& u)
+        static auto impl(component_manager& manager, auto&& relationship_view)
         {
-            return std::forward<U>(u);
+            return relationship_view
+                | std::views::transform([&manager](auto& rel_component)
+                    {
+                        return get_queryables_for_entity<Queryables...>(manager, rel_component.related_entity)
+                            .transform([&rel_component](auto&& queryables)
+                                {
+                                    return make_flat_tuple(
+                                        rel_component,
+                                        std::forward<decltype(queryables)>(queryables)
+                                    );
+                                });
+                    })
+                | std::views::filter([](auto const& opt)
+                    {
+                        return opt.has_value();
+                    })
+                | std::views::transform([](auto&& opt)
+                    {
+                        return *std::forward<decltype(opt)>(opt);
+                    });
+        }
+
+        static auto one(component_manager& manager, entity_id entity)
+        {
+            return impl(manager, manager.get_component<Relationship>(entity));
+        }
+
+        static auto all(component_manager& manager)
+        {
+            return impl(manager, manager.get_components<Relationship>());
         }
     };
 
-    template <typename... T>
-    auto make_flat_tuple(T&&... ts)
+    // Return all of the given components if owned by the given entity, or nullopt.
+    template <entity_queryable... Queryables>
+    auto get_queryables_for_entity(component_manager& manager, entity_id entity)
     {
-        return std::tuple_cat(wrap<std::remove_cvref_t<T>>{}(std::forward<T>(ts))...);
+        auto results = std::make_tuple(
+            resolve_entity_queryable<Queryables>{}.one(manager, entity)...
+        );
+
+        return std::apply([](auto const&... rs) { return (is_not_null(rs) && ...); }, results)
+            ? std::make_optional(std::apply([](auto&&... rs) { return std::make_tuple(deref(rs)...); }, std::move(results)))
+            : std::nullopt;
     }
 
-    template <component PrimaryComponent, component... Components>
-    auto gather_components(component_manager& manager)
+    template <
+        entity_queryable Queryable,
+        entity_queryable... Queryables>
+    auto get_entity_queryables(component_manager& manager)
     {
-        if constexpr (0 == sizeof...(Components)) {
-            return manager.get_components<PrimaryComponent>();
+        if constexpr (0 == sizeof...(Queryables)) {
+            return resolve_entity_queryable<Queryable>{}.all(manager);
         }
         else {
-            return manager.get_components<PrimaryComponent>()
-                | std::views::transform([&manager](auto&& primary_component)
+            return resolve_entity_queryable<Queryable>{}.all(manager)
+                | std::views::transform([&manager](auto&& resolved)
                     {
-                        /// TODO: This is re-querying singleton components for each primary component.
-                        /// We should find a way to collect the singleton components first so that they
-                        /// only need to be retrieved once.
-                        if constexpr (derived_from_entity_component<PrimaryComponent>) {
-                            return std::make_tuple(
-                                std::ref(primary_component),
-                                detail::get_from_manager<Components>(manager, primary_component.entity)...
-                            );
+                        if constexpr (specialization<Queryable, related>) {
+                            return get_queryables_for_entity<Queryables...>(manager, std::get<0>(resolved).entity)
+                                .transform([resolved = std::move(resolved)](auto&& queryables)
+                                    {
+                                        return make_flat_tuple(
+                                            std::move(resolved),
+                                            std::forward<decltype(queryables)>(queryables)
+                                        );
+                                    });
                         }
-                        else {
-                            static_assert(!(derived_from_entity_component<Components> || ...),
-                                "Entity components may not be used in a query where the primary component is a singleton. "
-                                "Reorder your components such that an entity component is the initial query.");
-
-                            return std::make_tuple(
-                                std::ref(primary_component),
-                                manager.get_component<Components>()...
-                            );
+                        else if constexpr (derived_from_entity_component<Queryable>) {
+                            return get_queryables_for_entity<Queryables...>(manager, resolved.entity)
+                                .transform([&resolved](auto&& queryables)
+                                    {
+                                        return make_flat_tuple(
+                                            std::forward<decltype(resolved)>(resolved),
+                                            std::forward<decltype(queryables)>(queryables)
+                                        );
+                                    });
                         }
                     })
-                | std::views::filter([](auto const& tup)
+                | std::views::filter([](auto const& opt)
                     {
-                        return std::apply([](auto const&... m)
-                            {
-                                return (detail::is_not_null(m) && ...);
-                            },
-                            tup);
+                        return opt.has_value();
                     })
-                | std::views::transform([](auto&& tup) -> decltype(auto)
+                | std::views::transform([](auto&& opt)
                     {
-                        return std::apply([](auto&&... ms)
-                            {
-                                return std::forward_as_tuple(detail::deref(ms)...);
-                            },
-                            std::forward<decltype(tup)>(tup));
+                        return *std::forward<decltype(opt)>(opt);
                     });
         }
     }
+
+    template <queryable>
+    struct queryable_view_wrapper;
+
+    template <
+        entity_queryable Queryable,
+        entity_queryable... Queryables>
+    struct queryable_view_wrapper<entity_has<Queryable, Queryables...>>
+    {
+        queryable_view_wrapper(component_manager& manager)
+            : view{ get_entity_queryables<Queryable, Queryables...>(manager) }
+        {
+        }
+
+        decltype(get_entity_queryables<Queryable, Queryables...>(std::declval<component_manager&>()))
+            view;
+    };
 }
 
 namespace mope
 {
-    template <std::ranges::view View, component... Components>
-    struct query_join;
-
-    struct joinable_query_mixin
+    template <queryable... Queryables>
+    struct query
     {
-    protected:
-        template <std::ranges::view ViewT, component... JoinComponents>
-        auto join_mixin(component_manager& manager, ViewT view)
-            -> query_join<ViewT, JoinComponents...>;
-    };
-
-    template <std::ranges::view View, component... Components>
-    struct query_join : public joinable_query_mixin
-    {
-        query_join(component_manager& manager, View previous_view)
+        query(component_manager& manager)
             : m_manager{ manager }
-            , m_view{ make_view(manager, std::move(previous_view)) }
-        {
-        }
-
-        auto begin()
-        {
-            return m_view.begin();
-        }
-
-        auto end()
-        {
-            return m_view.end();
-        }
-
-        template <component... JoinComponents>
-        auto join() &
-        {
-            return join_mixin<view_type, JoinComponents...>(m_manager, m_view);
-        }
-
-        template <component... JoinComponents>
-        auto join() &&
-        {
-            return join_mixin<view_type, JoinComponents...>(m_manager, std::move(m_view));
-        }
-
-    private:
-        static auto make_view(component_manager& manager, View&& previous_view)
-        {
-            return std::ranges::cartesian_product_view{
-                std::move(previous_view),
-                detail::gather_components<Components...>(manager)
-            }
-                | std::views::transform([](auto&& pairs)
-                    {
-                        return detail::make_flat_tuple(
-                            std::get<0>(std::forward<decltype(pairs)>(pairs)),
-                            std::get<1>(std::forward<decltype(pairs)>(pairs)));
-                    });
-        }
-
-        component_manager& m_manager;
-        using view_type = decltype(make_view(
-            std::declval<component_manager&>(), std::declval<View>()
-        ));
-        view_type m_view;
-    };
-
-    template <component... Components>
-    struct query_components : public joinable_query_mixin
-    {
-        query_components(component_manager& manager)
-            : m_manager{ manager }
-            , m_view{ make_view(manager) }
         { }
 
-        auto begin()
+        template <entity_queryable... CrossQueryables>
+        auto cross()
         {
-            return m_view.begin();
+            return query<Queryables..., entity_has<CrossQueryables...>>{m_manager};
         }
 
-        auto end()
+        auto exec()
         {
-            return m_view.end();
-        }
-
-        template <component... JoinComponents>
-        auto join() &
-        {
-            return join_mixin<view_type, JoinComponents...>(m_manager, m_view);
-        }
-
-        template <component... JoinComponents>
-        auto join() &&
-        {
-            return join_mixin<view_type, JoinComponents...>(m_manager, std::move(m_view));
+            if constexpr (0 == sizeof...(Queryables)) {
+                return std::ranges::empty_view<void>{};
+            }
+            else if constexpr (1 == sizeof...(Queryables)) {
+                using Q0 = std::tuple_element_t<0, std::tuple<Queryables...>>;
+                return detail::queryable_view_wrapper<Q0>{ m_manager }.view;
+            }
+            else {
+                return std::ranges::cartesian_product_view{
+                    detail::queryable_view_wrapper<Queryables>{ m_manager }.view...
+                }
+                    | std::views::transform([](auto&& tup)
+                        {
+                            return detail::make_flat_tuple(std::forward<decltype(tup)>(tup));
+                        });
+            }
         }
 
     private:
-        static auto make_view(component_manager& manager)
-        {
-            return detail::gather_components<Components...>(manager);
-        }
-
         component_manager& m_manager;
-        using view_type = decltype(make_view(std::declval<component_manager&>()));
-        view_type m_view;
     };
-
-    template <std::ranges::view ViewT, component... JoinComponents>
-    auto joinable_query_mixin::join_mixin(component_manager& manager, ViewT view)
-        -> query_join<ViewT, JoinComponents...>
-    {
-        return query_join<ViewT, JoinComponents...>{manager, std::move(view)};
-    }
 }

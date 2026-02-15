@@ -8,6 +8,7 @@
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -32,11 +33,8 @@ namespace mope::detail
         /// This method is virtual because we need to be able to call it without
         /// naming the component type.
         ///
-        /// The base implementation is a no-op to support singleton components
-        /// without requiring a dynamic_cast.
-        ///
         /// @param entity The entity whose component to remove.
-        virtual void remove(entity_id) {}
+        virtual void remove(entity_id) = 0;
     };
     PRAGMA_GCC(GCC diagnostic pop)
 
@@ -61,7 +59,8 @@ namespace mope::detail
             return *std::get_if<Component*>(&m_data);
         }
 
-        void remove()
+        /// The entity_id parameter is ignored for singleton components.
+        void remove(entity_id) override
         {
             m_data = std::monostate{};
         }
@@ -104,6 +103,7 @@ namespace mope::detail
     };
 
     template <derived_from_entity_component Component>
+        requires (!std::derived_from<Component, relationship>)
     class component_storage<Component> final : public component_storage_base
     {
     public:
@@ -111,14 +111,14 @@ namespace mope::detail
             requires std::same_as<std::remove_cvref_t<T>, Component>
         auto add_or_set(T&& t) -> Component*
         {
-            entity_id entity = t.entity;
+            auto entity = t.entity;
             if (auto iter = m_index_map.find(entity); m_index_map.end() != iter) {
                 m_data[iter->second] = std::forward<T>(t);
                 return &m_data[iter->second];
             }
             else {
                 m_data.push_back(std::forward<T>(t));
-                m_index_map.insert({ entity, m_data.size() - 1 });
+                m_index_map.emplace(entity, m_data.size() - 1);
                 return &m_data.back();
             }
         }
@@ -126,10 +126,25 @@ namespace mope::detail
         void remove(entity_id entity) override
         {
             if (auto iter = m_index_map.find(entity); m_index_map.end() != iter) {
+                auto index = iter->second;
+
+                // Swap the component we want to remove with the last component.
                 using std::swap;
-                swap(m_data[iter->second], m_data.back());
-                m_index_map[m_data.back().entity] = iter->second;
+                swap(m_data[index], m_data.back());
+
+                // Repoint the index map entry for the component we just swapped
+                // to its new location (the former location of the component
+                // that we are removing).
+                // Note that we don't have to worry about an insert and rehash,
+                // because we already know that this key (entity) is in the map
+                // by virtue of the fact that this component is here.
+                m_index_map[m_data[index].entity] = index;
+
+                // Remove the component that is now at the end of the vector.
                 m_data.pop_back();
+
+                // Erase the index map entry for the component that we just
+                // removed.
                 m_index_map.erase(iter);
             }
         }
@@ -146,12 +161,94 @@ namespace mope::detail
 
         auto all()
         {
-            return m_data | std::views::all;
+            return std::ranges::ref_view{ m_data };
         }
 
     private:
         std::vector<Component> m_data;
         std::unordered_map<entity_id, std::size_t> m_index_map;
+    };
+
+    template <std::derived_from<relationship> Relationship>
+    class component_storage<Relationship> final : public component_storage_base
+    {
+    public:
+        template <typename T>
+            requires std::same_as<std::remove_cvref_t<T>, Relationship>
+        auto add_or_set(T&& t) -> Relationship*
+        {
+            auto entity = t.entity;
+            auto related_entity = t.related_entity;
+
+            // It's okay if this makes an empty map; we're about to put
+            // something there anyway.
+            auto& inner_map = m_index_map[entity];
+
+            if (auto iter = inner_map.find(related_entity); inner_map.end() != iter) {
+                m_data[iter->second] = std::forward<T>(t);
+                return &m_data[iter->second];
+            }
+            else {
+                m_data.push_back(std::forward<T>(t));
+                inner_map.emplace(related_entity, m_data.size() - 1);
+                return &m_data.back();
+            }
+        }
+
+        void remove(entity_id entity) override
+        {
+            if (auto&& iter = m_index_map.find(entity); m_index_map.end() != iter) {
+                auto data_end = m_data.end();
+
+                for (auto&& [related_entity, index] : iter->second) {
+                    // Swap the component we want to remove with the last
+                    // component.
+                    using std::swap;
+                    swap(m_data[index], *--data_end);
+
+                    // Repoint the index map entry for the component we just
+                    // swapped to its new location (the former location of the
+                    // component that we are removing).
+                    // Note that we don't have to worry about an insert and
+                    // rehash, because we already know that these keys
+                    // (entities) are in the maps by virtue of the fact that
+                    // this component is here.
+                    m_index_map[m_data[index].entity][m_data[index].related_entity] = index;
+                }
+
+                // Erase all the components that we just swapped to the back.
+                m_data.erase(data_end, m_data.end());
+
+                // Finally, we can clear all the indices for this entity. (We
+                // tend not to want to deallocate a map that we already have,
+                // since its probable that components will be added to this
+                // entity again.)
+                iter->second.clear();
+            }
+        }
+
+        auto get(entity_id entity)
+        {
+            // We are doing in this in such a way to avoid adding another inner
+            // map for every entity we query... At that point we may as well
+            // index the vector directly.
+            return std::ranges::single_view{ entity }
+                | std::views::transform([this](auto&& entity) { return m_index_map.find(entity); })
+                | std::views::filter([this](auto&& iter) { return m_index_map.end() != iter; })
+                | std::views::transform([](auto&& iter) { return std::ranges::subrange{ iter->second }; })
+                | std::views::join
+                | std::views::transform([this](auto&& kvp) -> decltype(auto) { return m_data[kvp.second]; });
+        }
+
+        auto all()
+        {
+            return std::ranges::ref_view{ m_data };
+        }
+
+    private:
+        std::vector<Relationship> m_data;
+        std::unordered_map<entity_id, std::unordered_map<entity_id, std::size_t>>
+            m_index_map;
     };
 }
 
@@ -185,13 +282,14 @@ namespace mope
         }
 
         template <derived_from_singleton_component Component>
-        auto get_component() -> Component*
+        auto get_component()
         {
             return ensure_storage<Component>().get();
         }
 
+        // TODO: do we want to use this for relationships? they have very different semantics
         template <derived_from_entity_component Component>
-        auto get_component(entity_id entity) -> Component*
+        auto get_component(entity_id entity)
         {
             return ensure_storage<Component>().get(entity);
         }
@@ -211,7 +309,7 @@ namespace mope
         template <derived_from_singleton_component Component>
         void remove_component()
         {
-            ensure_storage<Component>().remove();
+            ensure_storage<Component>().remove(NoEntity);
         }
 
     private:

@@ -9,6 +9,7 @@
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
+#include "mope_game_engine/query.hxx"
 #include "mope_game_engine/transforms.hxx"
 #include "mope_vec/mope_vec.hxx"
 
@@ -20,17 +21,18 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <sstream>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 namespace
 {
-    static constexpr auto OrthoWidth{ 1024.f };
-    static constexpr auto OrthoHeight{ 768.f };
-    static constexpr auto PaddleWidth{ 12.f };
-    static constexpr auto PaddleHeight{ 80.f };
-    static constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
+    constexpr auto OrthoWidth{ 1024.f };
+    constexpr auto OrthoHeight{ 768.f };
+    constexpr auto PaddleWidth{ 12.f };
+    constexpr auto PaddleHeight{ 80.f };
+    constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
 }
 
 namespace
@@ -133,8 +135,6 @@ namespace
         collision_type type;
     };
 
-    struct reset_round_event {};
-
     struct collision_detected_event
     {
         double previous_remaining_time;
@@ -150,6 +150,7 @@ namespace
         double remaining_time;
     };
 
+    struct reset_round_event {};
     struct all_collisions_resolved_event {};
 
     void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
@@ -161,7 +162,7 @@ namespace
 
     void reset_round(mope::game_scene& scene, reset_round_event const&)
     {
-        for (auto&& ball : scene.query<ball_component>()) {
+        for (auto&& ball : scene.query<ball_component>().exec()) {
             scene.set_components(
                 // Set the initial ball velocity
                 ball_component{
@@ -178,7 +179,7 @@ namespace
                 });
         }
 
-        for (auto&& player : scene.query<player_component>()) {
+        for (auto&& player : scene.query<player_component>().exec()) {
             scene.set_components(
                 // Set the initial position of the player
                 mope::transform_component{
@@ -188,7 +189,7 @@ namespace
                 });
         }
 
-        for (auto&& opponent : scene.query<opponent_component>()) {
+        for (auto&& opponent : scene.query<opponent_component>().exec()) {
             scene.set_components(
                 // Set the initial position of the opponent
                 mope::transform_component{
@@ -202,7 +203,8 @@ namespace
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
         for (auto&& [player, transform] : scene
-            .query<player_component, mope::transform_component>())
+            .query<player_component, mope::transform_component>()
+            .exec())
         {
             auto previous_y = transform.position().y();
             auto min_showing = 0.5f * (transform.size().y() + transform.size().x());
@@ -219,7 +221,8 @@ namespace
     {
         for (auto&& [opponent, opponent_transform, ball, ball_transform] : scene
             .query<opponent_component, mope::transform_component>()
-            .join<ball_component, mope::transform_component>())
+            .cross<ball_component, mope::transform_component>()
+            .exec())
         {
             auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
             auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
@@ -248,8 +251,9 @@ namespace
             find_collisions(scene, event.time_step);
         }
 
-        // Resolving a collision might cause more collisions, so...
-        // Each time we resolve a collision, we look for more collisions.
+        // We are resolving collisions by sweeping along the ball's path. After
+        // resolving a collision, we need to continue sweeping along the ball's
+        // new path for the remainder of the time step.
         void operator()(mope::game_scene& scene, collision_resolved_event const& event) override
         {
             find_collisions(scene, event.remaining_time);
@@ -263,13 +267,13 @@ namespace
             }
 
             for (auto&& [ball, ball_transform] : scene
-                .query<ball_component, mope::transform_component>())
+                .query<ball_component, mope::transform_component>()
+                .exec())
             {
-                auto v = scene.query<ball_collider_component, mope::transform_component>();
-
                 future::assign_range(
                     m_collision_cache,
-                    v | std::views::transform([&ball_transform, &ball](auto&& collider_components)
+                    scene.query<ball_collider_component, mope::transform_component>().exec()
+                    | std::views::transform([&ball_transform, &ball](auto&& collider_components)
                         {
                             auto&& [collider, collider_transform] = collider_components;
                             return mope::axis_aligned_object_collision(
@@ -355,17 +359,18 @@ namespace
 
     void end_round(mope::game_scene& scene, all_collisions_resolved_event const&)
     {
-        for (auto&& [ball, transform] : scene
-            .query<ball_component, mope::transform_component>())
+        for (auto&& [ball, ball_transform] : scene
+            .query<ball_component, mope::transform_component>()
+            .exec())
         {
-            if (transform.x_position() > OrthoWidth) {
-                for (auto&& player : scene.query<player_component>()) {
+            if (ball_transform.x_position() > OrthoWidth) {
+                for (auto&& player : scene.query<player_component>().exec()) {
                     ++player.score;
                 }
                 scene.emplace_event<reset_round_event>();
             }
-            else if (transform.x_position() + transform.x_size() < 0.0f) {
-                for (auto&& opponent : scene.query<opponent_component>()) {
+            else if (ball_transform.x_position() + ball_transform.x_size() < 0.0f) {
+                for (auto&& opponent : scene.query<opponent_component>().exec()) {
                     ++opponent.score;
                 }
                 scene.emplace_event<reset_round_event>();

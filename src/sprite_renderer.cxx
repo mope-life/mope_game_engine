@@ -72,7 +72,10 @@ void main()
 
 void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
-    for (auto&& transform : scene.query<transform_component>()) {
+    for (auto&& transform : scene
+        .query<transform_component>()
+        .exec())
+    {
         transform.save_model();
     }
 }
@@ -80,7 +83,8 @@ void mope::sprite_renderer::pre_tick(game_scene& scene)
 void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
     for (auto&& [sprite, transform] : scene
-        .query<sprite_component, mope::transform_component>())
+        .query<sprite_component, mope::transform_component>()
+        .exec())
     {
         sprite.texture.bind();
         auto alphaf = static_cast<float>(alpha);

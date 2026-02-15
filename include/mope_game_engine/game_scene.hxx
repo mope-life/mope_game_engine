@@ -146,10 +146,19 @@ namespace mope
             m_events.emplace_back(static_cast<void*>(event), process_event<Event>);
         }
 
-        template <component... Components>
+        /// Return a view over groups of components in this scene.
+        ///
+        /// If given a single component, the view will be over references to
+        /// that component. Otherwise, the view will be over tuples of
+        /// references to the given components. Each element in the view will be
+        /// comprised of components belonged to a single entity.
+        ///
+        /// The query can be expanded by calling methods on the returned object,
+        /// q.v. @ref mope::query.
+        template <entity_queryable... Queryables>
         auto query()
         {
-            return query_components<Components...>{*this};
+            return ::mope::query<entity_has<Queryables...>>{ *this };
         }
 
     private:
