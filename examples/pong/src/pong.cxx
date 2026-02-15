@@ -16,12 +16,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <ctime>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ranges>
-#include <sstream>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -41,6 +39,23 @@ namespace
     {
         void on_load(mope::I_game_engine& engine) override;
     };
+
+    int run_app(mope::I_logger* logger)
+    {
+        auto window = mope::glfw::window{
+            static_cast<int>(OrthoWidth),
+            static_cast<int>(OrthoHeight),
+            "Pong"
+        };
+        window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
+
+        auto engine = mope::game_engine_create();
+        engine->set_tick_rate(60.0);
+        engine->add_scene(std::make_unique<pong>());
+        engine->run(window, logger);
+
+        return EXIT_SUCCESS;
+}
 }
 
 #if defined(_WIN32)
@@ -50,62 +65,45 @@ namespace
 #include <Windows.h>
 #include <sstream>
 
-namespace
+int WINAPI WinMain(
+    _In_ HINSTANCE /*hInstance*/,
+    _In_opt_ HINSTANCE /*hPrevInstance*/,
+    _In_ LPSTR /*lpCmdLine*/,
+    _In_ int /*nShowCmd*/
+)
 {
-    class logger : public mope::I_logger
+    class : public mope::I_logger
     {
+    public:
         void log(char const* message, log_level level) const override
         {
             std::ostringstream output{};
             output << "[" << level_string(level) << "] " << message << '\n';
             OutputDebugStringA(output.str().c_str());
         }
-    };
-}
+    } logger;
 
-#define MAIN() int WINAPI WinMain(          \
-    _In_ HINSTANCE /*hInstance*/,           \
-    _In_opt_ HINSTANCE /*hPrevInstance*/,   \
-    _In_ LPSTR /*lpCmdLine*/,               \
-    _In_ int /*nShowCmd*/                   \
-)
+    return run_app(&logger);
+}
 
 #else // !defined(_WIN32)
 
 #include <iostream>
 
-namespace
+int main(int, char* [])
 {
-    class logger : public mope::I_logger
+    class : public mope::I_logger
     {
         void log(char const* message, log_level level) const override
         {
             std::cout << "[" << level_string(level) << "] " << message << '\n';
         }
-    };
-}
+    } logger;
 
-#define MAIN() int main(int, char* [])
+    return run_app(&logger);
+}
 
 #endif // defined(_WIN32)
-
-MAIN()
-{
-    auto window = mope::glfw::window{
-        static_cast<int>(OrthoWidth),
-        static_cast<int>(OrthoHeight),
-        "Pong"
-    };
-    window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
-    logger log;
-
-    auto engine = mope::game_engine_create();
-    engine->set_tick_rate(60.0);
-    engine->add_scene(std::make_unique<pong>());
-    engine->run(window, &log);
-
-    return EXIT_SUCCESS;
-}
 
 namespace
 {
