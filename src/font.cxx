@@ -2,7 +2,9 @@
 
 #include "freetype.hxx"
 #include "mope_game_engine/texture.hxx"
+#include "mope_vec/mope_vec.hxx"
 
+#include <cstddef>
 #include <utility>
 
 mope::font::font()
@@ -64,14 +66,22 @@ auto mope::font::make_glyph(unsigned long character_code) -> glyph
         "loading character and rendering glyph"
     );
 
-    gl::texture tex;
-
-    tex.make(
-        face->glyph->bitmap.buffer,
-        mope::gl::pixel_format::r,
-        face->glyph->bitmap.width,
-        face->glyph->bitmap.rows
-    );
+    auto tex = gl::texture{}
+        .make(
+            reinterpret_cast<std::byte const*>(face->glyph->bitmap.buffer),
+            vec2i{
+                static_cast<int>(face->glyph->bitmap.width),
+                static_cast<int>(face->glyph->bitmap.rows)
+            },
+            mope::gl::pixel_format::r,
+            gl::texture_extra_options{
+                .row_alignment = 1,
+            })
+        .swizzle({
+            gl::color_component::one,
+            gl::color_component::one,
+            gl::color_component::one,
+            gl::color_component::red });
 
     return glyph{
         .width = face->glyph->bitmap.width,

@@ -313,8 +313,20 @@ auto mope::game_engine::get_default_texture() const -> gl::texture const&
 
 void mope::game_engine::prepare_gl_resources(I_logger* logger)
 {
-    constexpr unsigned char bytes[]{ 0xffu, 0xffu, 0xffu, 0xffu };
-    m_default_texture.make(bytes, gl::pixel_format::rgba, 1, 1);
+    constexpr auto pixel = std::byte{ 0xff };
+    m_default_texture.make(
+        &pixel,
+        vec2i{ 1, 1 },
+        gl::pixel_format::r,
+        {
+            .min_filter = gl::texture_min_filter::nearest,
+            .mag_filter = gl::texture_mag_filter::nearest,
+        });
+    m_default_texture.swizzle({
+        gl::color_component::one,
+        gl::color_component::one,
+        gl::color_component::one,
+        gl::color_component::one });
 
 #if !defined(NDEBUG)
     ::glEnable(GL_DEBUG_OUTPUT);
