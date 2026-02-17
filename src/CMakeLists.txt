@@ -4,6 +4,7 @@ target_sources(
     PRIVATE
         "buffer_object.hxx" "buffer_object.cxx"
         "collisions.cxx"
+        "font.cxx"
         "game_engine.cxx"
         "game_scene.cxx"
         "glad/glad.c"

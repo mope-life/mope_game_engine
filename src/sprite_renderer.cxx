@@ -22,25 +22,20 @@ uniform mat4 u_model;
 uniform mat4 u_view;
 uniform mat4 u_projection;
 layout (location = 0) in vec3 i_pos;
-layout (location = 1) in vec4 i_color;
-out vec4 frag_color;
+layout (location = 1) in vec2 i_tex_coord;
 out vec2 tex_coord;
 void main()
 {
-    frag_color = i_color;
-    tex_coord = i_pos.xy;
+    tex_coord = i_tex_coord;
     gl_Position = u_projection * u_view * u_model * vec4(i_pos, 1.0f);
 }
 )%%", R"%%(
 #version 330 core
-in vec4 frag_color;
 in vec2 tex_coord;
 out vec4 o_color;
 uniform sampler2D u_texture_2d;
 void main()
 {
-    // o_color = texture(u_texture_2d, tex_coord) * frag_color;
-    // o_color = frag_color;
     o_color = texture(u_texture_2d, tex_coord);
 }
 )%%");
@@ -51,50 +46,57 @@ void main()
 
     m_vao.bind();
     constexpr auto vertices = std::to_array<float>({
-        // coordinates
-        0.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f,
-        // color
-        1.0f, 1.0f, 1.0f, 1.0f,
+        0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+        0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+        1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
         });
     m_vbo.fill(vertices);
     m_vao.add_attribute(gl::attribute{
         .index = 0,
         .size = 3,
         .type = gl::attribute::float_type,
-        .stride = 0,
+        .stride = 5 * sizeof(float),
         .offset = 0,
         });
     m_vao.add_attribute(gl::attribute{
         .index = 1,
-        .size = 4,
+        .size = 2,
         .type = gl::attribute::float_type,
-        .stride = 0,
-        .offset = 3 * 4 * sizeof(float),
-        .divisor = 1,
+        .stride = 5 * sizeof(float),
+        .offset = 3 * sizeof(float),
         });
     constexpr auto indices = std::to_array<uint8_t>({ 0, 1, 2, 3 });
     m_ebo.fill(indices);
 }
 
+void mope::sprite_renderer::set_projection(mope::mat4f const& projection)
+{
+    m_shader.set_uniform("u_projection", projection);
+}
+
 void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
-    for (auto&& transform : scene.query<transform_component>()) {
+    for (auto&& transform : scene
+        .query<transform_component>()
+        .exec())
+    {
         transform.save_model();
     }
 }
 
 void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
+    m_shader.bind();
+    m_vao.bind();
+
     for (auto&& [sprite, transform] : scene
-        .query<sprite_component, mope::transform_component>())
+        .query<sprite_component, transform_component>()
+        .exec())
     {
         sprite.texture.bind();
         auto alphaf = static_cast<float>(alpha);
         m_shader.set_uniform("u_model", transform.blend(alphaf));
-        m_vao.bind();
         ::glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, 0);
     }
 }

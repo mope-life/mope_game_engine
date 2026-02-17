@@ -1,18 +1,22 @@
 #include "mope_game_engine/game_engine.hxx"
 
+#include "freetype.hxx"
 #include "glad/glad.h"
 #include "mope_game_engine/components/logger.hxx"
 #include "mope_game_engine/events/tick.hxx"
+#include "mope_game_engine/font.hxx"
 #include "mope_game_engine/game_engine_error.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_window.hxx"
 #include "mope_game_engine/resource_id.hxx"
 #include "mope_game_engine/texture.hxx"
+#include "mope_vec/mope_vec.hxx"
 
 #include <algorithm>
 #include <bitset>
 #include <chrono>
 #include <concepts>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <ranges>
@@ -22,6 +26,41 @@
 #include <vector>
 
 #define LOG_FPS true
+
+namespace mope
+{
+    class game_engine final : public I_game_engine
+    {
+    public:
+        game_engine();
+        ~game_engine();
+        void destroy() override;
+        void set_tick_rate(double hz_rate) override;
+        void add_scene(std::unique_ptr<game_scene> scene) override;
+        void run(I_game_window& window, I_logger* logger) override;
+        auto make_font(char const* ttf_path, int face_index, int instance_index = 0) -> font override;
+        auto get_default_texture() const -> gl::texture const& override;
+
+        void prepare_gl_resources(I_logger* logger);
+        void release_gl_resources();
+        void load_scenes(I_logger* logger);
+        void unload_scenes();
+        bool keep_alive(I_game_window& window);
+        void draw(I_game_window& window, double alpha);
+
+        std::vector<std::unique_ptr<game_scene>> m_new_scenes;
+        std::vector<std::unique_ptr<game_scene>> m_scenes;
+        double m_tick_time;
+        input_state m_input_state;
+        gl::texture m_default_texture;
+        FT_Library m_ft_library;
+    };
+}
+
+auto mope_game_engine_create() -> mope::I_game_engine*
+{
+    return new mope::game_engine{ };
+}
 
 namespace
 {
@@ -68,10 +107,22 @@ mope::game_engine::game_engine()
     , m_scenes{ }
     , m_tick_time{ 0.0 }
     , m_default_texture{ }
+    , m_ft_library{ nullptr }
 {
 }
 
-mope::game_engine::~game_engine() = default;
+mope::game_engine::~game_engine()
+{
+    if (nullptr != m_ft_library) {
+        FT_Done_FreeType(m_ft_library);
+        m_ft_library = nullptr;
+    }
+}
+
+void mope::game_engine::destroy()
+{
+    delete this;
+}
 
 void mope::game_engine::set_tick_rate(double hz_rate)
 {
@@ -94,7 +145,7 @@ void mope::game_engine::run(I_game_window& window, I_logger* logger)
     auto resources = finally {
         [this]() {
             for (auto&& scene : m_scenes) {
-                scene->on_unload(*this);
+                scene->unload(*this);
             }
             m_scenes.clear();
             release_gl_resources();
@@ -233,6 +284,30 @@ void mope::game_engine::run(I_game_window& window, I_logger* logger)
     }
 }
 
+auto mope::game_engine::make_font(char const* ttf_path, int face_index, int instance_index) -> font
+{
+    if (nullptr == m_ft_library) {
+        check_ft_error(
+            FT_Init_FreeType(&m_ft_library),
+            "initializing FreeType library"
+        );
+    }
+
+    FT_Face face = nullptr;
+
+    /// TODO: We definitely shouldn't actually throw here, since we're taking a
+    /// path from the user.
+    check_ft_error(FT_New_Face(
+        m_ft_library,
+        ttf_path,
+        static_cast<FT_Long>(face_index) | (static_cast<FT_Long>(instance_index) << 16),
+        &face),
+        "creating font face"
+    );
+
+    return font{face};
+}
+
 auto mope::game_engine::get_default_texture() const -> gl::texture const&
 {
     return m_default_texture;
@@ -240,8 +315,24 @@ auto mope::game_engine::get_default_texture() const -> gl::texture const&
 
 void mope::game_engine::prepare_gl_resources(I_logger* logger)
 {
-    constexpr unsigned char bytes[]{ 0xffu, 0xffu, 0xffu, 0xffu };
-    m_default_texture.make(bytes, gl::pixel_format::rgba, 1, 1);
+    constexpr auto pixel = std::byte{ 0xff };
+    m_default_texture.make(
+        &pixel,
+        vec2i{ 1, 1 },
+        gl::pixel_format::r,
+        {
+            .min_filter = gl::texture_min_filter::nearest,
+            .mag_filter = gl::texture_mag_filter::nearest,
+        });
+    m_default_texture.swizzle({
+        gl::color_component::one,
+        gl::color_component::one,
+        gl::color_component::one,
+        gl::color_component::one });
+
+    ::glEnable(GL_BLEND);
+    ::glEnable(GL_DEPTH_TEST);
+    ::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 #if !defined(NDEBUG)
     ::glEnable(GL_DEBUG_OUTPUT);
@@ -270,7 +361,7 @@ void mope::game_engine::load_scenes(I_logger* logger)
             // Give the scene access to the external components that we control.
             scene->set_external_component(logger);
 
-            scene->on_load(*this);
+            scene->load(*this);
             m_scenes.push_back(std::move(scene));
         }
 
@@ -287,7 +378,7 @@ void mope::game_engine::unload_scenes()
             [this](auto&& scene) {
                 bool done = scene->is_done();
                 if (done) {
-                    scene->on_unload(*this);
+                    scene->unload(*this);
                 }
                 return !done;
             }
@@ -305,8 +396,17 @@ bool mope::game_engine::keep_alive(I_game_window& window)
         // We want to call on_close() on every scene, so that the user doesn't
         // have to worry about one scene rejecting the close before another can
         // see it.
+
+        /// TODO: Adding to the above... I presume that what I meant by
+        /// this is that the user could reliably count on side-effects from
+        /// their `on_close()` method. But this might cause other problems if
+        /// their `on_close()` side-effects *shouldn't* take place if another
+        /// scene rejected the close. So perhaps the best way to handle this is
+        /// to have a subsequent virtual method `on_actually_closing()` where
+        /// the side-effects can be placed, and instruct users not to rely on
+        /// `on_close()` actually being called.
         for (auto&& scene : m_scenes) {
-            rejected = !scene->on_close() || rejected;
+            rejected = !scene->close() || rejected;
         }
     }
 

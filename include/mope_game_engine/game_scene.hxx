@@ -2,25 +2,22 @@
 
 #include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/component_manager.hxx"
-#include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/game_system.hxx"
 #include "mope_game_engine/query.hxx"
 #include "mope_vec/mope_vec.hxx"
 
-#include <bitset>
-#include <concepts>
+#include <functional>
 #include <memory>
-#include <ranges>
+#include <memory_resource>
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace mope
 {
-    class game_engine;
+    class I_game_engine;
     class sprite_renderer;
     struct input_state;
     struct I_logger;
@@ -30,31 +27,30 @@ namespace mope
 {
     /// A scene in a game.
     ///
-    /// The `game_scene` is the main entry-point into the mope_game_engine. The
+    /// The game_scene is the main entry-point into the mope_game_engine. The
     /// scene should be overriden and passed off to be driven by the
-    /// `game_engine`.
+    /// @ref I_game_engine.
     ///
     /// The scene also acts as the top-level ECS manager. Entites are doled out
     /// by the scene, components added to the scene with reference to those
     /// entities, and systems are added to the scene that act on the components.
     class game_scene : public component_manager
     {
-    public:
         // Customization points:
 
-        /// Called when the @ref game_engine first sees your scene.
+        /// Called when the @ref I_game_engine first sees this scene.
         ///
         /// Use this to add initial components / systems to the scene. By the
         /// time we get here, the graphics context is ready to use, and all
         /// engine-provided singleton components are available.
-        virtual void on_load(game_engine&) { }
+        virtual void on_load(I_game_engine&) { }
 
-        /// Called after your scene returns `true` from `is_done()`, just before
+        /// Called after this scene returns `true` from `is_done()`, just before
         /// it is deleted.
         ///
         /// TODO: This doesn't really do anything at the moment, but is a likely
         /// place to allow scenes to perform serialization in the future.
-        virtual void on_unload(game_engine&) { }
+        virtual void on_unload(I_game_engine&) { }
 
         /// Called when the @ref game_window has reported that it is ready to
         /// close.
@@ -64,6 +60,7 @@ namespace mope
         /// save before closing.
         virtual bool on_close() { return true; }
 
+    public:
         game_scene();
         virtual ~game_scene() = 0;
 
@@ -86,6 +83,16 @@ namespace mope
 
         /// Used by the @ref game_engine to tell the scene when it is time to render.
         void render(double alpha);
+
+        /// Used by the @ref game_engine. Calls on_load() and initializes
+        /// members that need a graphics context.
+        void load(I_game_engine& engine);
+
+        /// Used by the @ref game_engine. Calls on_unload().
+        void unload(I_game_engine& engine);
+
+        /// Used by the @ref game_engine. Calls on_close().
+        bool close();
 
         /// Add a game system that is invoked when certain events occur.
         ///
@@ -112,8 +119,8 @@ namespace mope
         ///   - `System` isn't copied or moved during construction, and
         ///   - `System` can respond to any number of event types, by
         ///      overloading `operator()` for each one (and providing the event
-        ///      types to the base @ref game_system). This is not possible using
-        ///      the functor method.
+        ///      types to the base template @ref game_system). This is not
+        ///      possible using the functor method.
         template <typename System>
         void add_game_system(std::unique_ptr<System>&& system)
         {
@@ -134,27 +141,44 @@ namespace mope
             add_game_system_imp(new System(std::forward<Args>(args)...));
         }
 
+        /// Place an event in the event queue for this frame.
         template <typename Event>
         void push_event(Event&& event)
         {
-            m_event_pool.store<std::remove_cvref_t<Event>>(std::forward<Event>(event));
+            emplace_event<std::remove_cvref_t<Event>>(std::forward<Event>(event));
         }
 
+        /// Construct an event (in place) in the event queue for this frame.
         template <typename Event, typename... Args>
         void emplace_event(Args&&... args)
         {
-            m_event_pool.store<Event>(std::forward<Args>(args)...);
+            auto ptr = m_event_pool.allocate(sizeof(Event), alignof(Event));
+            auto event = new (ptr) Event(std::forward<Args>(args)...);
+            m_events.emplace_back(static_cast<void*>(event), process_event<Event>);
         }
 
-        template <component... Components>
+        /// Return a view over groups of components in this scene.
+        ///
+        /// If given a single component, the view will be over references to
+        /// that component. Otherwise, the view will be over tuples of
+        /// references to the given components. Each element in the view will be
+        /// comprised of components belonged to a single entity.
+        ///
+        /// The query can be expanded by calling methods on the returned object,
+        /// q.v. @ref mope::query.
+        template <entity_queryable... Queryables>
         auto query()
         {
-            return query_components<Components...>{*this};
+            return ::mope::query<entity_has<Queryables...>>{ *this };
+        }
+
+        template <entity_queryable... Queryables>
+        auto query(entity_id entity)
+        {
+            return ::mope::query_entity<Queryables...>{ *this, entity };
         }
 
     private:
-        auto ensure_renderer() -> sprite_renderer&;
-
         template <typename... Events>
         void add_game_system_imp(game_system<Events...>* system)
         {
@@ -169,16 +193,31 @@ namespace mope
             ), ...);
         }
 
+        template <typename Event>
+        static void process_event(game_scene& scene, void* ptr)
+        {
+            auto event = static_cast<Event*>(ptr);
+
+            for (auto&& system_base_ptr : scene.m_game_systems[typeid(Event)]) {
+                auto system = static_cast<virtual_event_handler<Event>*>(system_base_ptr.get());
+                std::invoke(*system, scene, *event);
+            }
+
+            if constexpr (!std::is_trivially_destructible_v<Event>) {
+                event->~Event();
+            }
+
+            scene.m_event_pool.deallocate(ptr, sizeof(Event), alignof(Event));
+        }
+
         entity_id m_last_entity;
         std::unordered_map<std::type_index, std::vector<std::shared_ptr<void>>>
             m_game_systems;
-        detail::event_pool m_event_pool;
+        std::pmr::unsynchronized_pool_resource
+            m_event_pool;
+        std::vector<std::pair<void*, void(*)(game_scene&, void*)>>
+            m_events;
         std::unique_ptr<sprite_renderer> m_sprite_renderer;
         bool m_done;
-
-        template <typename Event>
-        friend void detail::event_pool::process_event(game_scene& scene, void* ptr);
     };
 }
-
-#include "mope_game_engine/event_pool.inl"

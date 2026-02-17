@@ -61,7 +61,7 @@ auto mope::axis_aligned_object_collision(
 
     ray r = {
         .origin = actor_position + half_size,
-        .velocity = static_cast<vec3d>(actor_velocity)
+        .velocity = vec3d{ actor_velocity }
     };
 
     return ray_bounding_box_collision(r, bb);

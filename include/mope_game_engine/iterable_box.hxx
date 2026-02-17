@@ -5,6 +5,15 @@
 
 namespace mope
 {
+    template <typename T>
+    class iterable_box;
+}
+
+template <typename T>
+constexpr bool std::ranges::enable_borrowed_range<mope::iterable_box<T>> = true;
+
+namespace mope
+{
     /// A viewable, non-owning range over a single item.
     ///
     /// If the pointed to item is null, the range is empty.
@@ -25,6 +34,11 @@ namespace mope
         iterable_box(T* t)
             : t{ t }
         {
+            static_assert(std::forward_iterator<iterable_box<T>::iterator>);
+            static_assert(std::ranges::forward_range<mope::iterable_box<T>>);
+            static_assert(std::ranges::borrowed_range<mope::iterable_box<T>>);
+            static_assert(std::ranges::sized_range<mope::iterable_box<T>>);
+            static_assert(std::ranges::view<mope::iterable_box<T>>);
         }
 
         struct iterator
@@ -96,15 +110,5 @@ namespace mope
 
     private:
         T* t;
-
-        static_assert(std::forward_iterator<iterable_box<T>::iterator>);
-        static_assert(std::ranges::forward_range<iterable_box<T>>);
-        static_assert(std::ranges::borrowed_range<iterable_box<T>>);
-        static_assert(std::ranges::sized_range<iterable_box<T>>);
-        static_assert(std::ranges::view<iterable_box<T>>);
     };
-
 }
-
-template <typename T>
-constexpr bool std::ranges::enable_borrowed_range<mope::iterable_box<T>> = true;

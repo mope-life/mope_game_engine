@@ -23,14 +23,14 @@ namespace mope::gl
     }
 
     constexpr auto orthographic_projection_matrix(
-        float left, float right, float top, float bottom, float near, float far
+        float left, float right, float bottom, float top, float near, float far
     ) -> mat4f
     {
         mat4f s = scale_matrix(
-            { 2.f / (right - left), -2.f / (bottom - top), -2.f / (far - near) }
+            { 2.f / (right - left), 2.f / (top - bottom), 2.f / (far - near) }
         );
         mat4f t = translation_matrix(
-            { -(right + left) / 2.f, -(bottom + top) / 2.f, -(far + near) / 2.f }
+            { -(left + right) / 2.f, -(top + bottom) / 2.f, -(near + far) / 2.f }
         );
         return s * t;
     }

@@ -29,6 +29,14 @@ target_compile_options(
         $<IF:$<CXX_COMPILER_ID:MSVC>,/W4 /WX,-Wall -Wextra -Werror>
 )
 
+target_link_libraries(
+    mope_game_engine
+
+    PUBLIC
+        freetype
+)
+
+add_subdirectory("external")
 add_subdirectory("include")
 add_subdirectory("src")
 add_subdirectory("examples")

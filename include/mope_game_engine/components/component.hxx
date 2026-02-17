@@ -3,6 +3,22 @@
 #include <concepts>
 #include <cstdint>
 
+namespace mope::detail
+{
+    template <typename, template <typename...> typename>
+    struct is_specialization_of : std::false_type
+    {
+    };
+
+    template <template <typename...> typename Template, typename... Ts>
+    struct is_specialization_of<Template<Ts...>, Template> : public std::true_type
+    {
+    };
+
+    template <typename T, template <typename...> typename Template>
+    concept specialization = is_specialization_of<T, Template>::value;
+}
+
 namespace mope
 {
     using entity_id = uint64_t;
@@ -14,11 +30,6 @@ namespace mope
     /// @ref game_system::process_tick() override.
     struct entity_component
     {
-        entity_component(entity_id entity)
-            : entity{ entity }
-        {
-        }
-
         entity_id entity;
     };
 
@@ -31,6 +42,21 @@ namespace mope
     /// @ref entity_component.
     struct singleton_component
     {
+    };
+
+    /// A relationship between two entities.
+    ///
+    /// Relationships are attached to entities like components. However, unlike
+    /// components, more than one relationship can be attached to an entity: one
+    /// for each other entity it is related to.
+    ///
+    /// Relationships are asymmetric: if A is related to B, B isn't necessarily
+    /// related to A.
+    struct relationship : public entity_component
+    {
+        /// The other entity to which the entity owning this component is
+        /// related.
+        entity_id related_entity;
     };
 
     template <typename T>

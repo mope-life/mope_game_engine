@@ -2,10 +2,8 @@
 
 #include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/components/logger.hxx"
-#include "mope_game_engine/event_pool.hxx"
 #include "mope_game_engine/events/tick.hxx"
 #include "mope_vec/mope_vec.hxx"
-#include "shader.hxx"
 #include "sprite_renderer.hxx"
 
 #include <memory>
@@ -14,6 +12,8 @@
 mope::game_scene::game_scene()
     : m_last_entity{ NoEntity }
     , m_game_systems{ }
+    , m_event_pool{ }
+    , m_events{ }
     , m_sprite_renderer{ }
     , m_done{ false }
 {
@@ -33,7 +33,7 @@ auto mope::game_scene::is_done() const -> bool
 
 void mope::game_scene::set_projection_matrix(mat4f const& projection)
 {
-    ensure_renderer().m_shader.set_uniform("u_projection", projection);
+    m_sprite_renderer->set_projection(projection);
 }
 
 auto mope::game_scene::create_entity() -> entity_id
@@ -44,7 +44,7 @@ auto mope::game_scene::create_entity() -> entity_id
 
 void mope::game_scene::destroy_entity(entity_id entity)
 {
-    for (auto&& manager : m_component_stores) {
+    for (auto&& manager : m_entity_component_stores) {
         manager.second->remove(entity);
     }
 }
@@ -54,42 +54,38 @@ auto mope::game_scene::logger() -> I_logger*
     return get_component<I_logger>();
 }
 
-auto mope::game_scene::ensure_renderer() -> sprite_renderer&
-{
-    if (!m_sprite_renderer) {
-        m_sprite_renderer = std::make_unique<sprite_renderer>();
-    }
-    return *m_sprite_renderer;
-}
-
 void mope::game_scene::tick(double time_step, input_state const& inputs)
 {
-    auto& renderer = ensure_renderer();
-    renderer.pre_tick(*this);
+    m_sprite_renderer->pre_tick(*this);
 
     emplace_event<tick_event>(time_step, inputs);
-    auto& events = m_event_pool.events();
-    for (auto i = 0uz; i < events.size(); ++i) {
+    for (auto i = 0uz; i < m_events.size(); ++i) {
         // Processing events potentially pushes more events, which potentially
         // invalidates any references we take here. Since this seems like a path
         // to madness, we are intentionally copying here.
-        auto [event, process_event] = events[i];
+        auto [event, process_event] = m_events[i];
         process_event(*this, event);
     }
-    m_event_pool.clear();
+    m_events.clear();
 }
 
 void mope::game_scene::render(double alpha)
 {
-    ensure_renderer().render(*this, alpha);
+    m_sprite_renderer->render(*this, alpha);
 }
 
-auto mope::detail::event_pool::events() -> decltype(m_events) const&
+void mope::game_scene::load(I_game_engine& engine)
 {
-    return m_events;
+    m_sprite_renderer = std::make_unique<sprite_renderer>();
+    on_load(engine);
 }
 
-void mope::detail::event_pool::clear()
+void mope::game_scene::unload(I_game_engine& engine)
 {
-    m_events.clear();
+    on_unload(engine);
+}
+
+bool mope::game_scene::close()
+{
+    return on_close();
 }

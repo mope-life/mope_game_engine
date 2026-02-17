@@ -24,16 +24,16 @@ namespace mope
         /// Return whether the window is trying to close.
         ///
         /// This can return `true` after the user clicks the "close" button on
-        /// the window (if present), or if the @ref game_engine has told the
+        /// the window (if present), or if the @ref I_game_engine has told the
         /// window to close with the `close()` method.
         virtual auto wants_to_close() const -> bool = 0;
 
         /// Indicate that this window should or shouldn't close.
         ///
-        /// The @ref game_engine will call this method with @p should_close true
-        /// when there are no more scenes and the @ref game_engine is done.
+        /// The @ref I_game_engine will call this method with @p should_close true
+        /// when there are no more scenes and the @ref I_game_engine is done.
         ///
-        /// The @ref game_engine will also call this method with @p should_close
+        /// The @ref I_game_engine will also call this method with @p should_close
         /// false in the event that the window has said it wants to close, but
         /// we want to prevent that from happening (because the game needs to
         /// perform some kind of cleanup first).
@@ -41,7 +41,7 @@ namespace mope
         /// Note that the window should not actually be destroyed, as there will
         /// be an outstanding OpenGL context when this is called. A typical
         /// implementation will cause @ref wants_to_close() to return `true`.
-        /// Destruction of the window is beyond the purview of @ref game_engine.
+        /// Destruction of the window is beyond the purview of @ref I_game_engine.
         virtual void close(bool should_close = true) = 0;
 
         /// Return a bitset representing which keys are currently pressed.
