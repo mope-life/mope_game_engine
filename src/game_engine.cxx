@@ -10,11 +10,13 @@
 #include "mope_game_engine/game_window.hxx"
 #include "mope_game_engine/resource_id.hxx"
 #include "mope_game_engine/texture.hxx"
+#include "mope_vec/mope_vec.hxx"
 
 #include <algorithm>
 #include <bitset>
 #include <chrono>
 #include <concepts>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <ranges>
@@ -327,6 +329,10 @@ void mope::game_engine::prepare_gl_resources(I_logger* logger)
         gl::color_component::one,
         gl::color_component::one,
         gl::color_component::one });
+
+    ::glEnable(GL_BLEND);
+    ::glEnable(GL_DEPTH_TEST);
+    ::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 #if !defined(NDEBUG)
     ::glEnable(GL_DEBUG_OUTPUT);
