@@ -6,6 +6,7 @@
 #include "mope_game_engine/query.hxx"
 #include "mope_vec/mope_vec.hxx"
 
+#include <functional>
 #include <memory>
 #include <memory_resource>
 #include <typeindex>
@@ -118,8 +119,8 @@ namespace mope
         ///   - `System` isn't copied or moved during construction, and
         ///   - `System` can respond to any number of event types, by
         ///      overloading `operator()` for each one (and providing the event
-        ///      types to the base @ref game_system). This is not possible using
-        ///      the functor method.
+        ///      types to the base template @ref game_system). This is not
+        ///      possible using the functor method.
         template <typename System>
         void add_game_system(std::unique_ptr<System>&& system)
         {
@@ -171,9 +172,13 @@ namespace mope
             return ::mope::query<entity_has<Queryables...>>{ *this };
         }
 
-    private:
-        auto ensure_renderer() -> sprite_renderer&;
+        template <entity_queryable... Queryables>
+        auto query(entity_id entity)
+        {
+            return ::mope::query_entity<Queryables...>{ *this, entity };
+        }
 
+    private:
         template <typename... Events>
         void add_game_system_imp(game_system<Events...>* system)
         {
@@ -194,8 +199,8 @@ namespace mope
             auto event = static_cast<Event*>(ptr);
 
             for (auto&& system_base_ptr : scene.m_game_systems[typeid(Event)]) {
-                auto& system = *static_cast<virtual_event_handler<Event>*>(system_base_ptr.get());
-                system(scene, *event);
+                auto system = static_cast<virtual_event_handler<Event>*>(system_base_ptr.get());
+                std::invoke(*system, scene, *event);
             }
 
             if constexpr (!std::is_trivially_destructible_v<Event>) {

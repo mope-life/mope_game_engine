@@ -34,13 +34,6 @@ namespace mope
         entity_queryable... Queryables>
     struct entity_has {};
 
-    /// A subquery that can be crossed (by way of cartesian product) with an
-    /// unrelated outside query.
-    template <
-        entity_queryable Queryable,
-        entity_queryable... Queryables>
-    struct cross {};
-
     /// A query for one or more singleton components.
     template <
         derived_from_singleton_component Component,
@@ -50,7 +43,6 @@ namespace mope
     template <typename T>
     concept queryable =
         detail::specialization<T, entity_has>
-        || detail::specialization<T, cross>
         || detail::specialization<T, singletons>;
 
     template <queryable... Queryables>
@@ -151,7 +143,11 @@ namespace mope::detail
     {
         static auto impl(component_manager& manager, auto&& relationship_view)
         {
-            return relationship_view
+            if constexpr (0 == sizeof...(Queryables)) {
+                return std::forward<decltype(relationship_view)>(relationship_view);
+            }
+            else {
+                return std::forward<decltype(relationship_view)>(relationship_view)
                 | std::views::transform([&manager](auto& rel_component)
                     {
                         return get_queryables_for_entity<Queryables...>(manager, rel_component.related_entity)
@@ -171,6 +167,7 @@ namespace mope::detail
                     {
                         return *std::forward<decltype(opt)>(opt);
                     });
+        }
         }
 
         static auto one(component_manager& manager, entity_id entity)
@@ -192,8 +189,12 @@ namespace mope::detail
             resolve_entity_queryable<Queryables>{}.one(manager, entity)...
         );
 
-        return std::apply([](auto const&... rs) { return (is_not_null(rs) && ...); }, results)
-            ? std::make_optional(std::apply([](auto&&... rs) { return std::make_tuple(deref(rs)...); }, std::move(results)))
+        return std::apply([](auto const&... elements) { return (is_not_null(elements) && ...); }, results)
+            ? std::make_optional(std::apply(
+                [](auto&&... elements)
+                {
+                    return std::make_tuple(deref(elements)...);
+                }, std::move(results)))
             : std::nullopt;
     }
 
@@ -268,13 +269,15 @@ namespace mope
             : m_manager{ manager }
         { }
 
+        /// Cross this query (by way of cartesian product) with an unrelated
+        /// outside query.
         template <entity_queryable... CrossQueryables>
-        auto cross()
+        auto cross() const
         {
-            return query<Queryables..., entity_has<CrossQueryables...>>{m_manager};
+            return query<Queryables..., entity_has<CrossQueryables...>>{ m_manager };
         }
 
-        auto exec()
+        auto exec() const
         {
             if constexpr (0 == sizeof...(Queryables)) {
                 return std::ranges::empty_view<void>{};
@@ -296,5 +299,30 @@ namespace mope
 
     private:
         component_manager& m_manager;
+    };
+
+    template <entity_queryable... Queryables>
+    struct query_entity
+    {
+        query_entity(component_manager& manager, entity_id entity)
+            : m_manager{ manager }
+            , m_entity{ entity }
+        {
+        }
+
+        auto exec() const
+        {
+            if constexpr (1 == sizeof...(Queryables)) {
+                using Q0 = std::tuple_element_t<0, std::tuple<Queryables...>>;
+                return detail::resolve_entity_queryable<Q0>{ }.one(m_manager, m_entity);
+            }
+            else {
+            return detail::get_queryables_for_entity<Queryables...>(m_manager, m_entity);
+        }
+        }
+
+    private:
+        component_manager& m_manager;
+        entity_id m_entity;
     };
 }
