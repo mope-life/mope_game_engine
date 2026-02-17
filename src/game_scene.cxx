@@ -12,6 +12,8 @@
 mope::game_scene::game_scene()
     : m_last_entity{ NoEntity }
     , m_game_systems{ }
+    , m_event_pool{ }
+    , m_events{ }
     , m_sprite_renderer{ }
     , m_done{ false }
 {
@@ -31,7 +33,7 @@ auto mope::game_scene::is_done() const -> bool
 
 void mope::game_scene::set_projection_matrix(mat4f const& projection)
 {
-    ensure_renderer().set_projection(projection);
+    m_sprite_renderer->set_projection(projection);
 }
 
 auto mope::game_scene::create_entity() -> entity_id
@@ -52,18 +54,9 @@ auto mope::game_scene::logger() -> I_logger*
     return get_component<I_logger>();
 }
 
-auto mope::game_scene::ensure_renderer() -> sprite_renderer&
-{
-    if (!m_sprite_renderer) {
-        m_sprite_renderer = std::make_unique<sprite_renderer>();
-    }
-    return *m_sprite_renderer;
-}
-
 void mope::game_scene::tick(double time_step, input_state const& inputs)
 {
-    auto& renderer = ensure_renderer();
-    renderer.pre_tick(*this);
+    m_sprite_renderer->pre_tick(*this);
 
     emplace_event<tick_event>(time_step, inputs);
     for (auto i = 0uz; i < m_events.size(); ++i) {
@@ -78,5 +71,21 @@ void mope::game_scene::tick(double time_step, input_state const& inputs)
 
 void mope::game_scene::render(double alpha)
 {
-    ensure_renderer().render(*this, alpha);
+    m_sprite_renderer->render(*this, alpha);
+}
+
+void mope::game_scene::load(I_game_engine& engine)
+{
+    m_sprite_renderer = std::make_unique<sprite_renderer>();
+    on_load(engine);
+}
+
+void mope::game_scene::unload(I_game_engine& engine)
+{
+    on_unload(engine);
+}
+
+bool mope::game_scene::close()
+{
+    return on_close();
 }

@@ -35,17 +35,16 @@ namespace mope
     /// entities, and systems are added to the scene that act on the components.
     class game_scene : public component_manager
     {
-    public:
         // Customization points:
 
-        /// Called when the @ref I_game_engine first sees your scene.
+        /// Called when the @ref I_game_engine first sees this scene.
         ///
         /// Use this to add initial components / systems to the scene. By the
         /// time we get here, the graphics context is ready to use, and all
         /// engine-provided singleton components are available.
         virtual void on_load(I_game_engine&) { }
 
-        /// Called after your scene returns `true` from `is_done()`, just before
+        /// Called after this scene returns `true` from `is_done()`, just before
         /// it is deleted.
         ///
         /// TODO: This doesn't really do anything at the moment, but is a likely
@@ -60,6 +59,7 @@ namespace mope
         /// save before closing.
         virtual bool on_close() { return true; }
 
+    public:
         game_scene();
         virtual ~game_scene() = 0;
 
@@ -82,6 +82,16 @@ namespace mope
 
         /// Used by the @ref game_engine to tell the scene when it is time to render.
         void render(double alpha);
+
+        /// Used by the @ref game_engine. Calls on_load() and initializes
+        /// members that need a graphics context.
+        void load(I_game_engine& engine);
+
+        /// Used by the @ref game_engine. Calls on_unload().
+        void unload(I_game_engine& engine);
+
+        /// Used by the @ref game_engine. Calls on_close().
+        bool close();
 
         /// Add a game system that is invoked when certain events occur.
         ///

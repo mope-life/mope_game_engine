@@ -145,7 +145,7 @@ void mope::game_engine::run(I_game_window& window, I_logger* logger)
     auto resources = finally {
         [this]() {
             for (auto&& scene : m_scenes) {
-                scene->on_unload(*this);
+                scene->unload(*this);
             }
             m_scenes.clear();
             release_gl_resources();
@@ -361,7 +361,7 @@ void mope::game_engine::load_scenes(I_logger* logger)
             // Give the scene access to the external components that we control.
             scene->set_external_component(logger);
 
-            scene->on_load(*this);
+            scene->load(*this);
             m_scenes.push_back(std::move(scene));
         }
 
@@ -378,7 +378,7 @@ void mope::game_engine::unload_scenes()
             [this](auto&& scene) {
                 bool done = scene->is_done();
                 if (done) {
-                    scene->on_unload(*this);
+                    scene->unload(*this);
                 }
                 return !done;
             }
@@ -396,8 +396,17 @@ bool mope::game_engine::keep_alive(I_game_window& window)
         // We want to call on_close() on every scene, so that the user doesn't
         // have to worry about one scene rejecting the close before another can
         // see it.
+
+        /// TODO: Adding to the above... I presume that what I meant by
+        /// this is that the user could reliably count on side-effects from
+        /// their `on_close()` method. But this might cause other problems if
+        /// their `on_close()` side-effects *shouldn't* take place if another
+        /// scene rejected the close. So perhaps the best way to handle this is
+        /// to have a subsequent virtual method `on_actually_closing()` where
+        /// the side-effects can be placed, and instruct users not to rely on
+        /// `on_close()` actually being called.
         for (auto&& scene : m_scenes) {
-            rejected = !scene->on_close() || rejected;
+            rejected = !scene->close() || rejected;
         }
     }
 
