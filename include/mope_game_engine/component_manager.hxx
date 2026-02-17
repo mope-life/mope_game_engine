@@ -3,30 +3,28 @@
 #include "mope_game_engine/components/component.hxx"
 #include "mope_game_engine/iterable_box.hxx"
 
+#include <concepts>
 #include <memory>
 #include <ranges>
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#if defined(__GNUC__)
-#define PRAGMA_GCC(x) _Pragma(#x)
-#else
-#define PRAGMA_GCC(x)
-#endif
-
 namespace mope::detail
 {
-    PRAGMA_GCC(GCC diagnostic push)
-    PRAGMA_GCC(GCC diagnostic ignored "-Woverloaded-virtual")
-    class component_storage_base
+    class singleton_component_storage_base
     {
     public:
-        virtual ~component_storage_base() = default;
+        virtual ~singleton_component_storage_base() = default;
+    };
+
+    class entity_component_storage_base
+    {
+    public:
+        virtual ~entity_component_storage_base() = default;
 
         /// Remove the component managed by this from the given entity.
         ///
@@ -36,31 +34,27 @@ namespace mope::detail
         /// @param entity The entity whose component to remove.
         virtual void remove(entity_id) = 0;
     };
-    PRAGMA_GCC(GCC diagnostic pop)
 
     template <component Component>
     class component_storage;
 
     template <derived_from_singleton_component Component>
-    class component_storage<Component> final : public component_storage_base
+    class component_storage<Component> final : public singleton_component_storage_base
     {
     public:
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Component>
-        auto add_or_set(T&& t) -> Component*
+        void add_or_set(T&& t)
         {
             m_data = std::forward<T>(t);
-            return std::get_if<Component>(&m_data);
         }
 
-        auto add_or_set(Component* external_data) -> Component*
+        void add_or_set(Component* external_data)
         {
             m_data = external_data;
-            return *std::get_if<Component*>(&m_data);
         }
 
-        /// The entity_id parameter is ignored for singleton components.
-        void remove(entity_id) override
+        void remove()
         {
             m_data = std::monostate{};
         }
@@ -104,22 +98,20 @@ namespace mope::detail
 
     template <derived_from_entity_component Component>
         requires (!std::derived_from<Component, relationship>)
-    class component_storage<Component> final : public component_storage_base
+    class component_storage<Component> final : public entity_component_storage_base
     {
     public:
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Component>
-        auto add_or_set(T&& t) -> Component*
+        void add_or_set(T&& t)
         {
             auto entity = t.entity;
             if (auto iter = m_index_map.find(entity); m_index_map.end() != iter) {
                 m_data[iter->second] = std::forward<T>(t);
-                return &m_data[iter->second];
             }
             else {
                 m_data.push_back(std::forward<T>(t));
                 m_index_map.emplace(entity, m_data.size() - 1);
-                return &m_data.back();
             }
         }
 
@@ -170,12 +162,12 @@ namespace mope::detail
     };
 
     template <std::derived_from<relationship> Relationship>
-    class component_storage<Relationship> final : public component_storage_base
+    class component_storage<Relationship> final : public entity_component_storage_base
     {
     public:
         template <typename T>
             requires std::same_as<std::remove_cvref_t<T>, Relationship>
-        auto add_or_set(T&& t) -> Relationship*
+        void add_or_set(T&& t)
         {
             auto entity = t.entity;
             auto related_entity = t.related_entity;
@@ -186,12 +178,10 @@ namespace mope::detail
 
             if (auto iter = inner_map.find(related_entity); inner_map.end() != iter) {
                 m_data[iter->second] = std::forward<T>(t);
-                return &m_data[iter->second];
             }
             else {
                 m_data.push_back(std::forward<T>(t));
                 inner_map.emplace(related_entity, m_data.size() - 1);
-                return &m_data.back();
             }
         }
 
@@ -261,14 +251,14 @@ namespace mope
             typename ComponentRef,
             component Component = std::remove_cvref_t<ComponentRef>
         >
-        auto set_component(ComponentRef&& c) -> Component*
+        void set_component(ComponentRef&& c)
         {
             return ensure_storage<Component>()
                 .add_or_set(std::forward<ComponentRef>(c));
         }
 
         template <typename... ComponentRef>
-        auto set_components(ComponentRef&&... cs)
+        void set_components(ComponentRef&&... cs)
         {
             (set_component(std::forward<ComponentRef>(cs)), ...);
         }
@@ -276,7 +266,7 @@ namespace mope
         /// Add a singleton component that has a lifetime managed separately
         /// from the @ref game_scene.
         template <derived_from_singleton_component Component>
-        auto set_external_component(Component* component) -> Component*
+        void set_external_component(Component* component)
         {
             return ensure_storage<Component>().add_or_set(component);
         }
@@ -313,13 +303,14 @@ namespace mope
         }
 
     private:
-        template <component Component>
-        auto ensure_storage() -> detail::component_storage<Component>&
+        template <component Component, typename StorageMap>
+        auto ensure_storage(StorageMap& storage_map)
+            -> detail::component_storage<Component>&
         {
             auto type_idx = std::type_index{ typeid(Component) };
-            auto iter = m_component_stores.find(type_idx);
-            if (m_component_stores.end() == iter) {
-                iter = m_component_stores.insert(
+            auto iter = storage_map.find(type_idx);
+            if (storage_map.end() == iter) {
+                iter = storage_map.insert(
                     { type_idx, std::make_unique<detail::component_storage<Component>>() }
                 ).first;
             }
@@ -332,10 +323,22 @@ namespace mope
             return static_cast<detail::component_storage<Component>&>(*iter->second);
         }
 
+        template <derived_from_singleton_component Component>
+        auto ensure_storage() -> detail::component_storage<Component>&
+        {
+            return ensure_storage<Component>(m_singleton_component_stores);
+        }
+
+        template <derived_from_entity_component Component>
+        auto ensure_storage() -> detail::component_storage<Component>&
+        {
+            return ensure_storage<Component>(m_entity_component_stores);
+        }
+
     protected:
-        std::unordered_map<std::type_index, std::unique_ptr<detail::component_storage_base>>
-            m_component_stores;
+        std::unordered_map<std::type_index, std::unique_ptr<detail::entity_component_storage_base>>
+            m_entity_component_stores;
+        std::unordered_map<std::type_index, std::unique_ptr<detail::singleton_component_storage_base>>
+            m_singleton_component_stores;
     };
 }
-
-#undef PRAGMA_GCC
