@@ -299,10 +299,12 @@ namespace mope
 
         auto exec() const
         {
-            if constexpr (0 == sizeof...(Queryables)) {
-                return std::ranges::empty_view<void>{};
-            }
-            else if constexpr (1 == sizeof...(Queryables)) {
+            static_assert(
+                sizeof...(Queryables) > 0,
+                "Can't execute a query with no queryables."
+            );
+
+            if constexpr (1 == sizeof...(Queryables)) {
                 using Q0 = std::tuple_element_t<0, std::tuple<Queryables...>>;
                 return detail::queryable_view_wrapper<Q0>{ m_manager }.view;
             }
