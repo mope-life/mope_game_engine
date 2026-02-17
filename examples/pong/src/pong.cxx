@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -42,6 +43,7 @@ namespace
 
     int run_app(mope::I_logger* logger)
     {
+        try {
         auto window = mope::glfw::window{
             static_cast<int>(OrthoWidth),
             static_cast<int>(OrthoHeight),
@@ -56,6 +58,11 @@ namespace
 
         return EXIT_SUCCESS;
 }
+        catch (std::exception const& ex) {
+            logger->log(ex.what(), mope::I_logger::log_level::error);
+            return EXIT_FAILURE;
+}
+    }
 }
 
 #if defined(_WIN32)
