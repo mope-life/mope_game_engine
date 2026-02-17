@@ -58,7 +58,7 @@ void mope::font::set_px(unsigned int px_size)
     );
 }
 
-auto mope::font::make_glyph(unsigned long character_code) -> glyph
+auto mope::font::make_glyph(unsigned long character_code) const -> glyph
 {
     auto face = static_cast<FT_Face>(m_imp);
     check_ft_error(
@@ -66,17 +66,17 @@ auto mope::font::make_glyph(unsigned long character_code) -> glyph
         "loading character and rendering glyph"
     );
 
+    auto buffer = reinterpret_cast<std::byte const*>(face->glyph->bitmap.buffer);
+    auto size = vec2i{ vec2ui{ face->glyph->bitmap.width , face->glyph->bitmap.rows } };
+    auto advance = vec2i{ face->glyph->advance.x >> 6, face->glyph->advance.y >> 6 };
+    auto bearing = vec2i{ face->glyph->bitmap_left, face->glyph->bitmap_top - size.y() };
+
     auto tex = gl::texture{}
         .make(
-            reinterpret_cast<std::byte const*>(face->glyph->bitmap.buffer),
-            vec2i{
-                static_cast<int>(face->glyph->bitmap.width),
-                static_cast<int>(face->glyph->bitmap.rows)
-            },
+            buffer,
+            size,
             mope::gl::pixel_format::r,
-            gl::texture_extra_options{
-                .row_alignment = 1,
-            })
+            gl::texture_extra_options{ .row_alignment = 1 })
         .swizzle({
             gl::color_component::one,
             gl::color_component::one,
@@ -84,10 +84,9 @@ auto mope::font::make_glyph(unsigned long character_code) -> glyph
             gl::color_component::red });
 
     return glyph{
-        .width = face->glyph->bitmap.width,
-        .height = face->glyph->bitmap.rows,
-        .horizontal_advance = face->glyph->advance.x,
-        .vertical_advance = face->glyph->advance.y,
+        .size = size,
+        .advance = advance,
+        .bearing = bearing,
         .texture = std::move(tex)
     };
 }
