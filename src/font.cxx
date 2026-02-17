@@ -22,7 +22,8 @@ mope::font::font(font const& that)
 {
     if (nullptr != m_imp) {
         check_ft_error(
-            FT_Reference_Face(static_cast<FT_Face>(m_imp))
+            FT_Reference_Face(static_cast<FT_Face>(m_imp)),
+            "creating reference to font face"
         );
     }
 }
@@ -68,8 +69,13 @@ auto mope::font::make_glyph(unsigned long character_code) const -> glyph
 
     auto buffer = reinterpret_cast<std::byte const*>(face->glyph->bitmap.buffer);
     auto size = vec2i{ vec2ui{ face->glyph->bitmap.width , face->glyph->bitmap.rows } };
-    auto advance = vec2i{ face->glyph->advance.x >> 6, face->glyph->advance.y >> 6 };
-    auto bearing = vec2i{ face->glyph->bitmap_left, face->glyph->bitmap_top - size.y() };
+    auto advance = vec2i{
+        static_cast<int>(face->glyph->advance.x) >> 6,
+        static_cast<int>(face->glyph->advance.y) >> 6
+    };
+    auto bearing = vec2i{
+        face->glyph->bitmap_left, face->glyph->bitmap_top - size.y()
+    };
 
     auto tex = gl::texture{}
         .make(
