@@ -83,12 +83,15 @@ namespace mope::detail
         );
     }
 
-    auto make_flat_tuple(specialization<std::tuple> auto&& tup)
+    template <typename T>
+        requires (detail::specialization<std::remove_cvref_t<T>, std::tuple>
+            || detail::specialization<std::remove_cvref_t<T>, std::pair>)
+    auto make_flat_tuple(T&& tup)
     {
         return std::apply([](auto&&... elements)
             {
                 return make_flat_tuple(std::forward<decltype(elements)>(elements)...);
-            }, std::forward<decltype(tup)>(tup));
+            }, std::forward<T>(tup));
     }
 
     template <typename T>
