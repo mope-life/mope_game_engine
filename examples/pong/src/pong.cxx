@@ -6,6 +6,7 @@
 #include "mope_game_engine/components/sprite.hxx"
 #include "mope_game_engine/components/transform.hxx"
 #include "mope_game_engine/events/tick.hxx"
+#include "mope_game_engine/font.hxx"
 #include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_scene.hxx"
 #include "mope_game_engine/game_system.hxx"
@@ -22,6 +23,8 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -34,10 +37,7 @@ namespace
     constexpr auto PaddleHeight{ 80.f };
     constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
     constexpr auto PaddleCollisionErraticism{ 4.0f };
-}
 
-namespace
-{
     class pong : public mope::game_scene
     {
         void on_load(mope::I_game_engine& engine) override;
@@ -46,24 +46,24 @@ namespace
     int run_app(mope::I_logger* logger)
     {
         try {
-        auto window = mope::glfw::window{
-            static_cast<int>(OrthoWidth),
-            static_cast<int>(OrthoHeight),
-            "Pong"
-        };
-        window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
+            auto window = mope::glfw::window{
+                static_cast<int>(OrthoWidth),
+                static_cast<int>(OrthoHeight),
+                "Pong"
+            };
+            window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
 
-        auto engine = mope::game_engine_create();
-        engine->set_tick_rate(60.0);
-        engine->add_scene(std::make_unique<pong>());
-        engine->run(window, logger);
+            auto engine = mope::game_engine_create();
+            engine->set_tick_rate(60.0);
+            engine->add_scene(std::make_unique<pong>());
+            engine->run(window, logger);
 
-        return EXIT_SUCCESS;
-}
+            return EXIT_SUCCESS;
+        }
         catch (std::exception const& ex) {
             logger->log(ex.what(), mope::I_logger::log_level::error);
             return EXIT_FAILURE;
-}
+        }
     }
 }
 
@@ -136,10 +136,20 @@ namespace
         mope::vec3f velocity;
     };
 
+    enum class text_justification
+    {
+        left,
+        right,
+    };
+
     struct score_component : public mope::entity_component
     {
         unsigned int value;
+        mope::vec3f display_position;
+        text_justification justification;
     };
+
+    struct score_display : public mope::relationship { };
 
     enum class collision_type
     {
@@ -201,10 +211,10 @@ namespace
                     { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
                     static_cast<float>(std::rand() % 401 - 200),
                     0.0f }
-        }
+                }
             );
         }
-        }
+    }
 
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
@@ -233,7 +243,6 @@ namespace
             auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
             auto ball_center = ball_transform.y_position() + 0.5f * ball_transform.y_size();
             auto diff = ball_center - opponent_center;
-
             auto actual_change = std::copysign(
                 std::min(
                     static_cast<float>(event.time_step * OpponentMaxPixelsPerSecond),
@@ -241,7 +250,6 @@ namespace
                 ),
                 diff
             );
-
             opponent_transform.slide({ 0.f, actual_change, 0.f });
         }
     }
@@ -338,18 +346,18 @@ namespace
         {
             auto&& [ball, ball_transform] = *opt;
 
-        // Move the ball by the amount of time before the collision occurred.
+            // Move the ball by the amount of time before the collision occurred.
             ball_transform.slide(mope::vec3f{ event.collision.contact_time * ball.velocity });
 
             auto new_velocity = mope::vec3d{ ball.velocity };
 
-        // Subtract twice the magnitude of the velocity projected along the
-        // contact normal.
-        // This has the effect of reversing our velocity on that axis.
-        new_velocity -= 2 * new_velocity.dot(event.collision.contact_normal)
-            * event.collision.contact_normal;
+            // Subtract twice the magnitude of the velocity projected along the
+            // contact normal.
+            // This has the effect of reversing our velocity on that axis.
+            new_velocity -= 2 * new_velocity.dot(event.collision.contact_normal)
+                * event.collision.contact_normal;
 
-        if (collision_type::erratic == event.type) {
+            if (collision_type::erratic == event.type) {
                 if (auto collider_transform = scene
                     .query<mope::transform_component>(event.collided_entity)
                     .exec())
@@ -359,16 +367,16 @@ namespace
                      auto mid = collider_transform->y_position() + 0.5f * collider_transform->y_size();
                      auto diff = event.collision.contact_point.y() - mid;
                      new_velocity.y() += PaddleCollisionErraticism * diff;
-        }
+                }
             }
 
             ball.velocity = mope::vec3f{ new_velocity };
 
             // Tell the collision detection system to look for more collisions
             // with our new velocity and remaining time.
-        scene.emplace_event<collision_resolved_event>(
+            scene.emplace_event<collision_resolved_event>(
                 event.previous_remaining_time - event.collision.contact_time);
-    }
+        }
     }
 
     void end_round(mope::game_scene& scene, all_collisions_resolved_event const&)
@@ -381,21 +389,89 @@ namespace
             if (competitor.victory_check(ball_transform)) {
                 scene.emplace_event<score_changed_event>(competitor.entity, 1);
                 scene.emplace_event<reset_round_event>();
-                }
+            }
         }
     }
 
-    void set_score(mope::game_scene& scene, score_changed_event const& event)
+    class set_score : public mope::game_system<score_changed_event>
     {
-        if (auto score = scene.query<score_component>(event.entity).exec()) {
-            score->value += event.increment;
+    public:
+        set_score(mope::I_game_engine& engine)
+            : m_font{ engine.make_font("fonts/Share_Tech_Mono/ShareTechMono-Regular.ttf", 0) }
+        {
+            m_font.set_px(100);
         }
-    }
+
+    private:
+        auto make_text(
+            mope::game_scene& scene,
+            std::string_view text,
+            mope::vec3f const& origin,
+            text_justification justification)
+        {
+            auto result = std::vector<mope::entity_id>{};
+            result.reserve(text.length());
+
+            auto pen = origin;
+
+            for (auto i = 0uz; i < text.size(); ++i) {
+                auto ch = text_justification::left == justification
+                    ? text[i]
+                    : text[text.size() - (1uz + i)];
+
+                auto glyph = m_font.make_glyph(ch);
+
+                if (text_justification::right == justification) {
+                    pen -= mope::vec3f{ glyph.advance };
+                }
+
+                auto entity = scene.create_entity();
+                scene.set_component(mope::sprite_component{ entity, glyph.texture });
+                // TODO: If we want to generalize this function, we would want to
+                // account for kerning here.
+                scene.set_component(mope::transform_component{
+                    entity,
+                    pen + mope::vec3f{ glyph.bearing },
+                    mope::vec3f{ glyph.size } + mope::vec3f{ 0.0f, 0.0f, 1.0f } });
+
+                if (text_justification::left == justification) {
+                    pen += mope::vec3f{ glyph.advance };
+                }
+
+                result.push_back(entity);
+            }
+
+            return result;
+        }
+
+        void operator()(mope::game_scene& scene, score_changed_event const& event)
+        {
+            for (auto&& rel : scene.query<score_display>(event.entity).exec()) {
+                scene.destroy_entity(rel.related_entity);
+            }
+            scene.remove_component<score_display>(event.entity);
+
+            if (auto score = scene.query<score_component>(event.entity).exec()) {
+                score->value += event.increment;
+
+                for (auto entity : make_text(
+                    scene,
+                    std::to_string(score->value),
+                    score->display_position,
+                    score->justification))
+                {
+                    scene.set_component(score_display{ event.entity, entity });
+                }
+            }
+        }
+
+        mope::font m_font;
+    };
 
     bool did_player_win(mope::transform_component const& ball_transform)
-            {
+    {
         return ball_transform.x_position() > OrthoWidth;
-        }
+    }
 
     bool did_opponent_win(mope::transform_component const& ball_transform)
     {
@@ -422,7 +498,7 @@ namespace
         emplace_game_system<ball_movement>();
         add_game_system(resolve_collisions);
         add_game_system(end_round);
-        add_game_system(set_score);
+        emplace_game_system<set_score>(engine);
 
         auto player = create_entity();
         auto opponent = create_entity();
@@ -441,8 +517,16 @@ namespace
             opponent_behavior{ opponent },
             competitor_component{ player, did_player_win },
             competitor_component{ opponent, did_opponent_win },
-            score_component{ player, 0, },
-            score_component{ opponent, 0 },
+            score_component{
+                player,
+                0,
+                { 0.5f * OrthoWidth - 100.0f, OrthoHeight - 150.0f, 0.0f },
+                text_justification::right },
+            score_component{
+                opponent,
+                0,
+                { 0.5f * OrthoWidth + 100.0f, OrthoHeight - 150.0f, 0.0f },
+                text_justification::left },
             collides_with{ ball, player, collision_type::erratic },
             collides_with{ ball, opponent, collision_type::erratic },
             collides_with{ ball, top, collision_type::normal },

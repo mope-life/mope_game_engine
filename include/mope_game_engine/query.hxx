@@ -148,26 +148,26 @@ namespace mope::detail
             }
             else {
                 return std::forward<decltype(relationship_view)>(relationship_view)
-                | std::views::transform([&manager](auto& rel_component)
-                    {
-                        return get_queryables_for_entity<Queryables...>(manager, rel_component.related_entity)
-                            .transform([&rel_component](auto&& queryables)
-                                {
-                                    return make_flat_tuple(
-                                        rel_component,
-                                        std::forward<decltype(queryables)>(queryables)
-                                    );
-                                });
-                    })
-                | std::views::filter([](auto const& opt)
-                    {
-                        return opt.has_value();
-                    })
-                | std::views::transform([](auto&& opt)
-                    {
-                        return *std::forward<decltype(opt)>(opt);
-                    });
-        }
+                    | std::views::transform([&manager](auto& rel_component)
+                        {
+                            return get_queryables_for_entity<Queryables...>(manager, rel_component.related_entity)
+                                .transform([&rel_component](auto&& queryables)
+                                    {
+                                        return make_flat_tuple(
+                                            rel_component,
+                                            std::forward<decltype(queryables)>(queryables)
+                                        );
+                                    });
+                        })
+                    | std::views::filter([](auto const& opt)
+                        {
+                            return opt.has_value();
+                        })
+                    | std::views::transform([](auto&& opt)
+                        {
+                            return *std::forward<decltype(opt)>(opt);
+                        });
+            }
         }
 
         static auto one(component_manager& manager, entity_id entity)
@@ -258,6 +258,23 @@ namespace mope::detail
         decltype(get_entity_queryables<Queryable, Queryables...>(std::declval<component_manager&>()))
             view;
     };
+
+    template <
+        derived_from_singleton_component Component,
+        derived_from_singleton_component... Components>
+    struct queryable_view_wrapper<singletons<Component, Components...>>
+    {
+        /// TODO:
+        /*
+        queryable_view_wrapper(component_manager& manager)
+            : view{ }
+        {
+        }
+
+        decltype()
+            view;
+        */
+    };
 }
 
 namespace mope
@@ -317,8 +334,8 @@ namespace mope
                 return detail::resolve_entity_queryable<Q0>{ }.one(m_manager, m_entity);
             }
             else {
-            return detail::get_queryables_for_entity<Queryables...>(m_manager, m_entity);
-        }
+                return detail::get_queryables_for_entity<Queryables...>(m_manager, m_entity);
+            }
         }
 
     private:
