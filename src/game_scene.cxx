@@ -32,7 +32,7 @@ auto mope::game_scene::is_done() const -> bool
 
 void mope::game_scene::set_projection_matrix(mat4f const& projection)
 {
-    ensure_renderer().m_shader.set_uniform("u_projection", projection);
+    ensure_renderer().set_projection(projection);
 }
 
 auto mope::game_scene::create_entity() -> entity_id

@@ -70,6 +70,11 @@ void main()
     m_ebo.fill(indices);
 }
 
+void mope::sprite_renderer::set_projection(mope::mat4f const& projection)
+{
+    m_shader.set_uniform("u_projection", projection);
+}
+
 void mope::sprite_renderer::pre_tick(game_scene& scene)
 {
     for (auto&& transform : scene
@@ -82,14 +87,16 @@ void mope::sprite_renderer::pre_tick(game_scene& scene)
 
 void mope::sprite_renderer::render(game_scene& scene, double alpha)
 {
+    m_shader.bind();
+    m_vao.bind();
+
     for (auto&& [sprite, transform] : scene
-        .query<sprite_component, mope::transform_component>()
+        .query<sprite_component, transform_component>()
         .exec())
     {
         sprite.texture.bind();
         auto alphaf = static_cast<float>(alpha);
         m_shader.set_uniform("u_model", transform.blend(alphaf));
-        m_vao.bind();
         ::glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, 0);
     }
 }
