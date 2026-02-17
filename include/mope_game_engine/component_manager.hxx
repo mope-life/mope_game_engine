@@ -161,7 +161,8 @@ namespace mope::detail
         std::unordered_map<entity_id, std::size_t> m_index_map;
     };
 
-    template <std::derived_from<relationship> Relationship>
+    template <derived_from_entity_component Relationship>
+        requires std::derived_from<Relationship, relationship>
     class component_storage<Relationship> final : public entity_component_storage_base
     {
     public:
