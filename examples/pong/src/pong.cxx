@@ -13,6 +13,7 @@
 #include "mope_game_engine/transforms.hxx"
 #include "mope_vec/mope_vec.hxx"
 
+#include <ctime>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -32,6 +33,7 @@ namespace
     constexpr auto PaddleWidth{ 12.f };
     constexpr auto PaddleHeight{ 80.f };
     constexpr auto OpponentMaxPixelsPerSecond{ 300.f };
+    constexpr auto PaddleCollisionErraticism{ 4.0f };
 }
 
 namespace
@@ -114,19 +116,29 @@ int main(int, char* [])
 
 namespace
 {
-    struct player_component : public mope::entity_component
+    struct round_setup_component : public mope::entity_component
     {
-        unsigned int score;
+        mope::vec3f initial_position;
+        mope::vec3f initial_scale;
     };
 
-    struct opponent_component : public mope::entity_component
+    struct competitor_component : public mope::entity_component
     {
-        unsigned int score;
+        bool(*victory_check)(mope::transform_component const&);
     };
 
-    struct ball_component : public mope::entity_component
+    struct ball_tag : public mope::entity_component{ };
+    struct player_behavior : public mope::entity_component { };
+    struct opponent_behavior : public mope::entity_component { };
+
+    struct ball_behavior : public mope::entity_component
     {
         mope::vec3f velocity;
+    };
+
+    struct score_component : public mope::entity_component
+    {
+        unsigned int value;
     };
 
     enum class collision_type
@@ -135,19 +147,18 @@ namespace
         erratic,    ///< Adds vertical velocity to the ball.
     };
 
-    struct ball_collider_component : public mope::entity_component
+    struct collides_with : public mope::relationship
     {
         collision_type type;
     };
 
     struct collision_detected_event
     {
-        double previous_remaining_time;
+        mope::entity_id ball_entity;
+        mope::entity_id collided_entity;
         mope::collision collision;
         collision_type type;
-        ball_component& ball;
-        mope::transform_component& ball_transform;
-        mope::transform_component& collider_transform;
+        double previous_remaining_time;
     };
 
     struct collision_resolved_event
@@ -157,6 +168,11 @@ namespace
 
     struct reset_round_event {};
     struct all_collisions_resolved_event {};
+    struct score_changed_event
+    {
+        mope::entity_id entity;
+        int increment;
+    };
 
     void exit_on_escape(mope::game_scene& scene, mope::tick_event const& event)
     {
@@ -167,48 +183,33 @@ namespace
 
     void reset_round(mope::game_scene& scene, reset_round_event const&)
     {
-        for (auto&& ball : scene.query<ball_component>().exec()) {
-            scene.set_components(
+        for (auto&& setup : scene.query<round_setup_component>().exec()) {
+            scene.set_component(
+                mope::transform_component{
+                    setup.entity,
+                    setup.initial_position,
+                    setup.initial_scale
+                }
+            );
+        }
+
+        for (auto&& ball : scene.query<ball_tag>().exec()) {
+            scene.set_component(
                 // Set the initial ball velocity
-                ball_component{
+                ball_behavior{
                     ball.entity,
                     { ((std::rand() % 2) * 2 - 1) * OrthoWidth / 2.5f,
                     static_cast<float>(std::rand() % 401 - 200),
                     0.0f }
-                },
-                // Set the initial position of the ball
-                mope::transform_component{
-                    ball.entity,
-                    { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
-                    { PaddleWidth, PaddleWidth, 1.0f }
-                });
         }
-
-        for (auto&& player : scene.query<player_component>().exec()) {
-            scene.set_components(
-                // Set the initial position of the player
-                mope::transform_component{
-                    player.entity,
-                    { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                    { PaddleWidth, PaddleHeight, 1.0f }
-                });
+            );
         }
-
-        for (auto&& opponent : scene.query<opponent_component>().exec()) {
-            scene.set_components(
-                // Set the initial position of the opponent
-                mope::transform_component{
-                    opponent.entity,
-                    { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
-                    { PaddleWidth, PaddleHeight, 1.0f }
-                });
         }
-    }
 
     void player_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
         for (auto&& [player, transform] : scene
-            .query<player_component, mope::transform_component>()
+            .query<player_behavior, mope::transform_component>()
             .exec())
         {
             auto previous_y = transform.position().y();
@@ -225,8 +226,8 @@ namespace
     void opponent_movement(mope::game_scene& scene, mope::tick_event const& event)
     {
         for (auto&& [opponent, opponent_transform, ball, ball_transform] : scene
-            .query<opponent_component, mope::transform_component>()
-            .cross<ball_component, mope::transform_component>()
+            .query<opponent_behavior, mope::transform_component>()
+            .cross<ball_tag, mope::transform_component>()
             .exec())
         {
             auto opponent_center = opponent_transform.y_position() + 0.5f * opponent_transform.y_size();
@@ -248,7 +249,7 @@ namespace
     class ball_movement : public mope::game_system<mope::tick_event, collision_resolved_event>
     {
         std::vector<
-            std::optional<std::tuple<mope::collision, collision_type, mope::transform_component&>>
+            std::optional<std::tuple<mope::collision, collision_type, mope::entity_id>>
         > m_collision_cache;
 
         void operator()(mope::game_scene& scene, mope::tick_event const& event) override
@@ -271,13 +272,14 @@ namespace
                 return;
             }
 
-            for (auto&& [ball, ball_transform] : scene
-                .query<ball_component, mope::transform_component>()
-                .exec())
+            for (auto&& [ball, ball_transform, collides_with_view] : scene.query<
+                ball_behavior,
+                mope::transform_component,
+                mope::related<collides_with, mope::transform_component>>().exec())
             {
                 future::assign_range(
                     m_collision_cache,
-                    scene.query<ball_collider_component, mope::transform_component>().exec()
+                    collides_with_view
                     | std::views::transform([&ball_transform, &ball](auto&& collider_components)
                         {
                             auto&& [collider, collider_transform] = collider_components;
@@ -287,9 +289,9 @@ namespace
                                 ball.velocity,
                                 collider_transform.position(),
                                 collider_transform.size()
-                            ).transform([&collider, &collider_transform](auto&& collision)
+                            ).transform([&collider](auto&& collision)
                                 {
-                                    return std::make_tuple(collision, collider.type, std::ref(collider_transform));
+                                    return std::make_tuple(collision, collider.type, collider.related_entity);
                                 });
                         })
                     | std::views::filter([remaining_time](auto const& opt)
@@ -307,19 +309,17 @@ namespace
                 // There is at least once collision this frame.
                 if (!m_collision_cache.empty()) {
                     // Find the collision that happens first, determined by the minimum contact time.
-                    auto&& [collision, type, collider_transform] = *std::ranges::min(
+                    auto&& [collision, type, collided_entity] = *std::ranges::min(
                         m_collision_cache,
                         std::ranges::less{},
                         [](auto&& opt) { return std::get<0>(*opt).contact_time; });
 
                     scene.emplace_event<collision_detected_event>(
-                        remaining_time,
+                        ball.entity,
+                        collided_entity,
                         std::move(collision),
                         type,
-                        ball,
-                        ball_transform,
-                        collider_transform
-                    );
+                        remaining_time);
                 }
                 else {
                     // No collision found. Move the ball the rest of the way along its path.
@@ -332,12 +332,16 @@ namespace
 
     void resolve_collisions(mope::game_scene& scene, collision_detected_event const& event)
     {
-        // Move the ball by the amount of time before the collision occurred.
-        event.ball_transform.slide(
-            static_cast<mope::vec3f>(event.collision.contact_time * event.ball.velocity)
-        );
+        if (auto opt = scene
+            .query<ball_behavior, mope::transform_component>(event.ball_entity)
+            .exec())
+        {
+            auto&& [ball, ball_transform] = *opt;
 
-        auto new_velocity = static_cast<mope::vec3d>(event.ball.velocity);
+        // Move the ball by the amount of time before the collision occurred.
+            ball_transform.slide(mope::vec3f{ event.collision.contact_time * ball.velocity });
+
+            auto new_velocity = mope::vec3d{ ball.velocity };
 
         // Subtract twice the magnitude of the velocity projected along the
         // contact normal.
@@ -345,42 +349,57 @@ namespace
         new_velocity -= 2 * new_velocity.dot(event.collision.contact_normal)
             * event.collision.contact_normal;
 
-        // If we bounced off a paddle, add vertical velocity away from the
-        // center of the paddle.
         if (collision_type::erratic == event.type) {
-            auto diff = event.collision.contact_point.y()
-                - (event.collider_transform.y_position() + 0.5f * event.collider_transform.y_size());
-            new_velocity.y() = static_cast<float>(event.ball.velocity.y() + 4.0 * diff);
+                if (auto collider_transform = scene
+                    .query<mope::transform_component>(event.collided_entity)
+                    .exec())
+                {
+                     // If we bounced off a paddle, add vertical velocity away
+                     // from the center of the paddle.
+                     auto mid = collider_transform->y_position() + 0.5f * collider_transform->y_size();
+                     auto diff = event.collision.contact_point.y() - mid;
+                     new_velocity.y() += PaddleCollisionErraticism * diff;
         }
+            }
 
-        event.ball.velocity = static_cast<mope::vec3f>(new_velocity);
+            ball.velocity = mope::vec3f{ new_velocity };
 
-        // Tell the collision detection system to look for more collisions with
-        // our new velocity and remaining time.
+            // Tell the collision detection system to look for more collisions
+            // with our new velocity and remaining time.
         scene.emplace_event<collision_resolved_event>(
-            event.previous_remaining_time - event.collision.contact_time
-        );
+                event.previous_remaining_time - event.collision.contact_time);
+    }
     }
 
     void end_round(mope::game_scene& scene, all_collisions_resolved_event const&)
     {
-        for (auto&& [ball, ball_transform] : scene
-            .query<ball_component, mope::transform_component>()
+        for (auto&& [ball, ball_transform, competitor] : scene
+            .query<ball_tag, mope::transform_component>()
+            .cross<competitor_component>()
             .exec())
         {
-            if (ball_transform.x_position() > OrthoWidth) {
-                for (auto&& player : scene.query<player_component>().exec()) {
-                    ++player.score;
-                }
+            if (competitor.victory_check(ball_transform)) {
+                scene.emplace_event<score_changed_event>(competitor.entity, 1);
                 scene.emplace_event<reset_round_event>();
-            }
-            else if (ball_transform.x_position() + ball_transform.x_size() < 0.0f) {
-                for (auto&& opponent : scene.query<opponent_component>().exec()) {
-                    ++opponent.score;
                 }
-                scene.emplace_event<reset_round_event>();
-            }
         }
+    }
+
+    void set_score(mope::game_scene& scene, score_changed_event const& event)
+    {
+        if (auto score = scene.query<score_component>(event.entity).exec()) {
+            score->value += event.increment;
+        }
+    }
+
+    bool did_player_win(mope::transform_component const& ball_transform)
+            {
+        return ball_transform.x_position() > OrthoWidth;
+        }
+
+    bool did_opponent_win(mope::transform_component const& ball_transform)
+    {
+        return ball_transform.x_position() + ball_transform.x_size() < 0.0f;
     }
 }
 
@@ -403,6 +422,7 @@ namespace
         emplace_game_system<ball_movement>();
         add_game_system(resolve_collisions);
         add_game_system(end_round);
+        add_game_system(set_score);
 
         auto player = create_entity();
         auto opponent = create_entity();
@@ -415,25 +435,42 @@ namespace
             mope::sprite_component{ player, default_texture },
             mope::sprite_component{ opponent, default_texture },
             mope::sprite_component{ ball, default_texture },
-            ball_component{ ball, { 0.0f, 0.0f, 0.0f } },
-            player_component{ player, 0 },
-            opponent_component{ opponent, 0 },
-            ball_collider_component{ player, collision_type::erratic },
-            ball_collider_component{ opponent, collision_type::erratic },
-            ball_collider_component{ top, collision_type::normal },
-            ball_collider_component{ bottom, collision_type::normal },
+            ball_tag{ ball },
+            ball_behavior{ ball, { 0.0f, 0.0f, 0.0f } },
+            player_behavior{ player },
+            opponent_behavior{ opponent },
+            competitor_component{ player, did_player_win },
+            competitor_component{ opponent, did_opponent_win },
+            score_component{ player, 0, },
+            score_component{ opponent, 0 },
+            collides_with{ ball, player, collision_type::erratic },
+            collides_with{ ball, opponent, collision_type::erratic },
+            collides_with{ ball, top, collision_type::normal },
+            collides_with{ ball, bottom, collision_type::normal },
             mope::transform_component{
                 top,
                 { -0.5f * OrthoWidth, -1.0f, 0.0f },
-                { 2.0f * OrthoWidth, 1.0f, 1.0f }
-            },
+                { 2.0f * OrthoWidth, 1.0f, 1.0f } },
             mope::transform_component{
                 bottom,
                 { -0.5f * OrthoWidth, OrthoHeight, 0.0f },
-                { 2.0f * OrthoWidth, 1.0f, 1.0f }
-            }
+                { 2.0f * OrthoWidth, 1.0f, 1.0f } },
+            round_setup_component{
+                ball,
+                /*position*/ { 0.5f * (OrthoWidth - PaddleWidth), 0.5f * (OrthoHeight - PaddleWidth), 0.0f },
+                /*scale*/ { PaddleWidth, PaddleWidth, 1.0f } },
+            round_setup_component{
+                player,
+                /*position*/ { 2.0f * PaddleWidth, 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                /*scale*/ { PaddleWidth, PaddleHeight, 1.0f } },
+            round_setup_component{
+                opponent,
+                /*position*/ { OrthoWidth - (3.0f * PaddleWidth), 0.5f * (OrthoHeight - PaddleHeight), 0.0f },
+                /*scale*/ { PaddleWidth, PaddleHeight, 1.0f } }
         );
 
+        emplace_event<score_changed_event>(player, 0);
+        emplace_event<score_changed_event>(opponent, 0);
         emplace_event<reset_round_event>();
     }
 }
