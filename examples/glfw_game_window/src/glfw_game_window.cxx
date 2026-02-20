@@ -128,7 +128,7 @@ mope::glfw::window::window(
     window_mode mode,
     gl::version_and_profile profile
 )
-    : m_imp{ std::make_shared<imp>(title, dimensions, mode, profile) }
+    : m_imp{ std::make_unique<imp>(title, dimensions, mode, profile) }
     , m_client_size{ }
     , m_cursor_pos{ }
     , m_cursor_deltas{ }
@@ -165,6 +165,8 @@ mope::glfw::window::window(
 
     ::glfwPollEvents();
 }
+
+mope::glfw::window::~window() noexcept = default;
 
 mope::glfw::window::window(window&& that) noexcept
     : m_imp{ }

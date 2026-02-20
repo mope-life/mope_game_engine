@@ -68,11 +68,9 @@ namespace mope::glfw
             window_mode mode,
             gl::version_and_profile profile = I_game_engine::opengl_version_and_profile()
         );
-        ~window() noexcept = default;
+        ~window() noexcept;
         window(window&&) noexcept;
         window& operator=(window&&) noexcept;
-        window(window const&) = delete;
-        window& operator=(window const&) = delete;
 
         void swap(window&);
 
@@ -101,7 +99,7 @@ namespace mope::glfw
         void handle_cursor_pos(double xpos, double ypos);
 
         struct imp;
-        std::shared_ptr<imp> m_imp;
+        std::unique_ptr<imp> m_imp;
 
         vec2i m_client_size;
         vec2f m_cursor_pos;
