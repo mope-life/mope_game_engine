@@ -280,136 +280,133 @@ void mope::glfw::window::handle_cursor_pos(double xpos, double ypos)
 
 namespace
 {
-    const std::unordered_map<int, mope::glfw::key> REMAPPED_KEYS{
-        {GLFW_KEY_UNKNOWN,       mope::glfw::key::UNKNOWN      },
-        {GLFW_KEY_SPACE,         mope::glfw::key::SPACE        },
-        {GLFW_KEY_APOSTROPHE,    mope::glfw::key::APOSTROPHE   },
-        {GLFW_KEY_COMMA,         mope::glfw::key::COMMA        },
-        {GLFW_KEY_MINUS,         mope::glfw::key::MINUS        },
-        {GLFW_KEY_PERIOD,        mope::glfw::key::PERIOD       },
-        {GLFW_KEY_SLASH,         mope::glfw::key::SLASH        },
-        {GLFW_KEY_0,             mope::glfw::key::R0           },
-        {GLFW_KEY_1,             mope::glfw::key::R1           },
-        {GLFW_KEY_2,             mope::glfw::key::R2           },
-        {GLFW_KEY_3,             mope::glfw::key::R3           },
-        {GLFW_KEY_4,             mope::glfw::key::R4           },
-        {GLFW_KEY_5,             mope::glfw::key::R5           },
-        {GLFW_KEY_6,             mope::glfw::key::R6           },
-        {GLFW_KEY_7,             mope::glfw::key::R7           },
-        {GLFW_KEY_8,             mope::glfw::key::R8           },
-        {GLFW_KEY_9,             mope::glfw::key::R9           },
-        {GLFW_KEY_SEMICOLON,     mope::glfw::key::SEMICOLON    },
-        {GLFW_KEY_EQUAL,         mope::glfw::key::EQUAL        },
-        {GLFW_KEY_A,             mope::glfw::key::A            },
-        {GLFW_KEY_B,             mope::glfw::key::B            },
-        {GLFW_KEY_C,             mope::glfw::key::C            },
-        {GLFW_KEY_D,             mope::glfw::key::D            },
-        {GLFW_KEY_E,             mope::glfw::key::E            },
-        {GLFW_KEY_F,             mope::glfw::key::F            },
-        {GLFW_KEY_G,             mope::glfw::key::G            },
-        {GLFW_KEY_H,             mope::glfw::key::H            },
-        {GLFW_KEY_I,             mope::glfw::key::I            },
-        {GLFW_KEY_J,             mope::glfw::key::J            },
-        {GLFW_KEY_K,             mope::glfw::key::K            },
-        {GLFW_KEY_L,             mope::glfw::key::L            },
-        {GLFW_KEY_M,             mope::glfw::key::M            },
-        {GLFW_KEY_N,             mope::glfw::key::N            },
-        {GLFW_KEY_O,             mope::glfw::key::O            },
-        {GLFW_KEY_P,             mope::glfw::key::P            },
-        {GLFW_KEY_Q,             mope::glfw::key::Q            },
-        {GLFW_KEY_R,             mope::glfw::key::R            },
-        {GLFW_KEY_S,             mope::glfw::key::S            },
-        {GLFW_KEY_T,             mope::glfw::key::T            },
-        {GLFW_KEY_U,             mope::glfw::key::U            },
-        {GLFW_KEY_V,             mope::glfw::key::V            },
-        {GLFW_KEY_W,             mope::glfw::key::W            },
-        {GLFW_KEY_X,             mope::glfw::key::X            },
-        {GLFW_KEY_Y,             mope::glfw::key::Y            },
-        {GLFW_KEY_Z,             mope::glfw::key::Z            },
-        {GLFW_KEY_LEFT_BRACKET,  mope::glfw::key::LEFT_BRACKET },
-        {GLFW_KEY_BACKSLASH,     mope::glfw::key::BACKSLASH    },
-        {GLFW_KEY_RIGHT_BRACKET, mope::glfw::key::RIGHT_BRACKET},
-        {GLFW_KEY_GRAVE_ACCENT,  mope::glfw::key::GRAVE_ACCENT },
-        {GLFW_KEY_WORLD_1,       mope::glfw::key::WORLD_1      },
-        {GLFW_KEY_WORLD_2,       mope::glfw::key::WORLD_2      },
-        {GLFW_KEY_ESCAPE,        mope::glfw::key::ESCAPE       },
-        {GLFW_KEY_ENTER,         mope::glfw::key::ENTER        },
-        {GLFW_KEY_TAB,           mope::glfw::key::TAB          },
-        {GLFW_KEY_BACKSPACE,     mope::glfw::key::BACKSPACE    },
-        {GLFW_KEY_INSERT,        mope::glfw::key::INSERT       },
-        {GLFW_KEY_DELETE,        mope::glfw::key::DELETE       },
-        {GLFW_KEY_RIGHT,         mope::glfw::key::RIGHT        },
-        {GLFW_KEY_LEFT,          mope::glfw::key::LEFT         },
-        {GLFW_KEY_DOWN,          mope::glfw::key::DOWN         },
-        {GLFW_KEY_UP,            mope::glfw::key::UP           },
-        {GLFW_KEY_PAGE_UP,       mope::glfw::key::PAGE_UP      },
-        {GLFW_KEY_PAGE_DOWN,     mope::glfw::key::PAGE_DOWN    },
-        {GLFW_KEY_HOME,          mope::glfw::key::HOME         },
-        {GLFW_KEY_END,           mope::glfw::key::END          },
-        {GLFW_KEY_CAPS_LOCK,     mope::glfw::key::CAPS_LOCK    },
-        {GLFW_KEY_SCROLL_LOCK,   mope::glfw::key::SCROLL_LOCK  },
-        {GLFW_KEY_NUM_LOCK,      mope::glfw::key::NUM_LOCK     },
-        {GLFW_KEY_PRINT_SCREEN,  mope::glfw::key::PRINT_SCREEN },
-        {GLFW_KEY_PAUSE,         mope::glfw::key::PAUSE        },
-        {GLFW_KEY_F1,            mope::glfw::key::F1           },
-        {GLFW_KEY_F2,            mope::glfw::key::F2           },
-        {GLFW_KEY_F3,            mope::glfw::key::F3           },
-        {GLFW_KEY_F4,            mope::glfw::key::F4           },
-        {GLFW_KEY_F5,            mope::glfw::key::F5           },
-        {GLFW_KEY_F6,            mope::glfw::key::F6           },
-        {GLFW_KEY_F7,            mope::glfw::key::F7           },
-        {GLFW_KEY_F8,            mope::glfw::key::F8           },
-        {GLFW_KEY_F9,            mope::glfw::key::F9           },
-        {GLFW_KEY_F10,           mope::glfw::key::F10          },
-        {GLFW_KEY_F11,           mope::glfw::key::F11          },
-        {GLFW_KEY_F12,           mope::glfw::key::F12          },
-        {GLFW_KEY_F13,           mope::glfw::key::F13          },
-        {GLFW_KEY_F14,           mope::glfw::key::F14          },
-        {GLFW_KEY_F15,           mope::glfw::key::F15          },
-        {GLFW_KEY_F16,           mope::glfw::key::F16          },
-        {GLFW_KEY_F17,           mope::glfw::key::F17          },
-        {GLFW_KEY_F18,           mope::glfw::key::F18          },
-        {GLFW_KEY_F19,           mope::glfw::key::F19          },
-        {GLFW_KEY_F20,           mope::glfw::key::F20          },
-        {GLFW_KEY_F21,           mope::glfw::key::F21          },
-        {GLFW_KEY_F22,           mope::glfw::key::F22          },
-        {GLFW_KEY_F23,           mope::glfw::key::F23          },
-        {GLFW_KEY_F24,           mope::glfw::key::F24          },
-        {GLFW_KEY_F25,           mope::glfw::key::F25          },
-        {GLFW_KEY_KP_0,          mope::glfw::key::KP_0         },
-        {GLFW_KEY_KP_1,          mope::glfw::key::KP_1         },
-        {GLFW_KEY_KP_2,          mope::glfw::key::KP_2         },
-        {GLFW_KEY_KP_3,          mope::glfw::key::KP_3         },
-        {GLFW_KEY_KP_4,          mope::glfw::key::KP_4         },
-        {GLFW_KEY_KP_5,          mope::glfw::key::KP_5         },
-        {GLFW_KEY_KP_6,          mope::glfw::key::KP_6         },
-        {GLFW_KEY_KP_7,          mope::glfw::key::KP_7         },
-        {GLFW_KEY_KP_8,          mope::glfw::key::KP_8         },
-        {GLFW_KEY_KP_9,          mope::glfw::key::KP_9         },
-        {GLFW_KEY_KP_DECIMAL,    mope::glfw::key::KP_DECIMAL   },
-        {GLFW_KEY_KP_DIVIDE,     mope::glfw::key::KP_DIVIDE    },
-        {GLFW_KEY_KP_MULTIPLY,   mope::glfw::key::KP_MULTIPLY  },
-        {GLFW_KEY_KP_SUBTRACT,   mope::glfw::key::KP_SUBTRACT  },
-        {GLFW_KEY_KP_ADD,        mope::glfw::key::KP_ADD       },
-        {GLFW_KEY_KP_ENTER,      mope::glfw::key::KP_ENTER     },
-        {GLFW_KEY_KP_EQUAL,      mope::glfw::key::KP_EQUAL     },
-        {GLFW_KEY_LEFT_SHIFT,    mope::glfw::key::LEFT_SHIFT   },
-        {GLFW_KEY_LEFT_CONTROL,  mope::glfw::key::LEFT_CONTROL },
-        {GLFW_KEY_LEFT_ALT,      mope::glfw::key::LEFT_ALT     },
-        {GLFW_KEY_LEFT_SUPER,    mope::glfw::key::LEFT_SUPER   },
-        {GLFW_KEY_RIGHT_SHIFT,   mope::glfw::key::RIGHT_SHIFT  },
-        {GLFW_KEY_RIGHT_CONTROL, mope::glfw::key::RIGHT_CONTROL},
-        {GLFW_KEY_RIGHT_ALT,     mope::glfw::key::RIGHT_ALT    },
-        {GLFW_KEY_RIGHT_SUPER,   mope::glfw::key::RIGHT_SUPER  },
-        {GLFW_KEY_MENU,          mope::glfw::key::MENU         },
-    };
-
-    auto remap_glfw_key(int key) -> std::optional<mope::glfw::key>
+    auto remap_glfw_key(int glfw_key) -> std::optional<mope::glfw::key>
     {
-        auto iter = REMAPPED_KEYS.find(key);
-        return REMAPPED_KEYS.end() != iter
-            ? std::make_optional(static_cast<mope::glfw::key>(iter->second))
-            : std::nullopt;
+        switch (glfw_key)
+    {
+        case GLFW_KEY_UNKNOWN:       return mope::glfw::key::UNKNOWN;
+        case GLFW_KEY_SPACE:         return mope::glfw::key::SPACE;
+        case GLFW_KEY_APOSTROPHE:    return mope::glfw::key::APOSTROPHE;
+        case GLFW_KEY_COMMA:         return mope::glfw::key::COMMA;
+        case GLFW_KEY_MINUS:         return mope::glfw::key::MINUS;
+        case GLFW_KEY_PERIOD:        return mope::glfw::key::PERIOD;
+        case GLFW_KEY_SLASH:         return mope::glfw::key::SLASH;
+        case GLFW_KEY_0:             return mope::glfw::key::R0;
+        case GLFW_KEY_1:             return mope::glfw::key::R1;
+        case GLFW_KEY_2:             return mope::glfw::key::R2;
+        case GLFW_KEY_3:             return mope::glfw::key::R3;
+        case GLFW_KEY_4:             return mope::glfw::key::R4;
+        case GLFW_KEY_5:             return mope::glfw::key::R5;
+        case GLFW_KEY_6:             return mope::glfw::key::R6;
+        case GLFW_KEY_7:             return mope::glfw::key::R7;
+        case GLFW_KEY_8:             return mope::glfw::key::R8;
+        case GLFW_KEY_9:             return mope::glfw::key::R9;
+        case GLFW_KEY_SEMICOLON:     return mope::glfw::key::SEMICOLON;
+        case GLFW_KEY_EQUAL:         return mope::glfw::key::EQUAL;
+        case GLFW_KEY_A:             return mope::glfw::key::A;
+        case GLFW_KEY_B:             return mope::glfw::key::B;
+        case GLFW_KEY_C:             return mope::glfw::key::C;
+        case GLFW_KEY_D:             return mope::glfw::key::D;
+        case GLFW_KEY_E:             return mope::glfw::key::E;
+        case GLFW_KEY_F:             return mope::glfw::key::F;
+        case GLFW_KEY_G:             return mope::glfw::key::G;
+        case GLFW_KEY_H:             return mope::glfw::key::H;
+        case GLFW_KEY_I:             return mope::glfw::key::I;
+        case GLFW_KEY_J:             return mope::glfw::key::J;
+        case GLFW_KEY_K:             return mope::glfw::key::K;
+        case GLFW_KEY_L:             return mope::glfw::key::L;
+        case GLFW_KEY_M:             return mope::glfw::key::M;
+        case GLFW_KEY_N:             return mope::glfw::key::N;
+        case GLFW_KEY_O:             return mope::glfw::key::O;
+        case GLFW_KEY_P:             return mope::glfw::key::P;
+        case GLFW_KEY_Q:             return mope::glfw::key::Q;
+        case GLFW_KEY_R:             return mope::glfw::key::R;
+        case GLFW_KEY_S:             return mope::glfw::key::S;
+        case GLFW_KEY_T:             return mope::glfw::key::T;
+        case GLFW_KEY_U:             return mope::glfw::key::U;
+        case GLFW_KEY_V:             return mope::glfw::key::V;
+        case GLFW_KEY_W:             return mope::glfw::key::W;
+        case GLFW_KEY_X:             return mope::glfw::key::X;
+        case GLFW_KEY_Y:             return mope::glfw::key::Y;
+        case GLFW_KEY_Z:             return mope::glfw::key::Z;
+        case GLFW_KEY_LEFT_BRACKET:  return mope::glfw::key::LEFT_BRACKET;
+        case GLFW_KEY_BACKSLASH:     return mope::glfw::key::BACKSLASH;
+        case GLFW_KEY_RIGHT_BRACKET: return mope::glfw::key::RIGHT_BRACKET;
+        case GLFW_KEY_GRAVE_ACCENT:  return mope::glfw::key::GRAVE_ACCENT;
+        case GLFW_KEY_WORLD_1:       return mope::glfw::key::WORLD_1;
+        case GLFW_KEY_WORLD_2:       return mope::glfw::key::WORLD_2;
+        case GLFW_KEY_ESCAPE:        return mope::glfw::key::ESCAPE;
+        case GLFW_KEY_ENTER:         return mope::glfw::key::ENTER;
+        case GLFW_KEY_TAB:           return mope::glfw::key::TAB;
+        case GLFW_KEY_BACKSPACE:     return mope::glfw::key::BACKSPACE;
+        case GLFW_KEY_INSERT:        return mope::glfw::key::INSERT;
+        case GLFW_KEY_DELETE:        return mope::glfw::key::DELETE;
+        case GLFW_KEY_RIGHT:         return mope::glfw::key::RIGHT;
+        case GLFW_KEY_LEFT:          return mope::glfw::key::LEFT;
+        case GLFW_KEY_DOWN:          return mope::glfw::key::DOWN;
+        case GLFW_KEY_UP:            return mope::glfw::key::UP;
+        case GLFW_KEY_PAGE_UP:       return mope::glfw::key::PAGE_UP;
+        case GLFW_KEY_PAGE_DOWN:     return mope::glfw::key::PAGE_DOWN;
+        case GLFW_KEY_HOME:          return mope::glfw::key::HOME;
+        case GLFW_KEY_END:           return mope::glfw::key::END;
+        case GLFW_KEY_CAPS_LOCK:     return mope::glfw::key::CAPS_LOCK;
+        case GLFW_KEY_SCROLL_LOCK:   return mope::glfw::key::SCROLL_LOCK;
+        case GLFW_KEY_NUM_LOCK:      return mope::glfw::key::NUM_LOCK;
+        case GLFW_KEY_PRINT_SCREEN:  return mope::glfw::key::PRINT_SCREEN;
+        case GLFW_KEY_PAUSE:         return mope::glfw::key::PAUSE;
+        case GLFW_KEY_F1:            return mope::glfw::key::F1;
+        case GLFW_KEY_F2:            return mope::glfw::key::F2;
+        case GLFW_KEY_F3:            return mope::glfw::key::F3;
+        case GLFW_KEY_F4:            return mope::glfw::key::F4;
+        case GLFW_KEY_F5:            return mope::glfw::key::F5;
+        case GLFW_KEY_F6:            return mope::glfw::key::F6;
+        case GLFW_KEY_F7:            return mope::glfw::key::F7;
+        case GLFW_KEY_F8:            return mope::glfw::key::F8;
+        case GLFW_KEY_F9:            return mope::glfw::key::F9;
+        case GLFW_KEY_F10:           return mope::glfw::key::F10;
+        case GLFW_KEY_F11:           return mope::glfw::key::F11;
+        case GLFW_KEY_F12:           return mope::glfw::key::F12;
+        case GLFW_KEY_F13:           return mope::glfw::key::F13;
+        case GLFW_KEY_F14:           return mope::glfw::key::F14;
+        case GLFW_KEY_F15:           return mope::glfw::key::F15;
+        case GLFW_KEY_F16:           return mope::glfw::key::F16;
+        case GLFW_KEY_F17:           return mope::glfw::key::F17;
+        case GLFW_KEY_F18:           return mope::glfw::key::F18;
+        case GLFW_KEY_F19:           return mope::glfw::key::F19;
+        case GLFW_KEY_F20:           return mope::glfw::key::F20;
+        case GLFW_KEY_F21:           return mope::glfw::key::F21;
+        case GLFW_KEY_F22:           return mope::glfw::key::F22;
+        case GLFW_KEY_F23:           return mope::glfw::key::F23;
+        case GLFW_KEY_F24:           return mope::glfw::key::F24;
+        case GLFW_KEY_F25:           return mope::glfw::key::F25;
+        case GLFW_KEY_KP_0:          return mope::glfw::key::KP_0;
+        case GLFW_KEY_KP_1:          return mope::glfw::key::KP_1;
+        case GLFW_KEY_KP_2:          return mope::glfw::key::KP_2;
+        case GLFW_KEY_KP_3:          return mope::glfw::key::KP_3;
+        case GLFW_KEY_KP_4:          return mope::glfw::key::KP_4;
+        case GLFW_KEY_KP_5:          return mope::glfw::key::KP_5;
+        case GLFW_KEY_KP_6:          return mope::glfw::key::KP_6;
+        case GLFW_KEY_KP_7:          return mope::glfw::key::KP_7;
+        case GLFW_KEY_KP_8:          return mope::glfw::key::KP_8;
+        case GLFW_KEY_KP_9:          return mope::glfw::key::KP_9;
+        case GLFW_KEY_KP_DECIMAL:    return mope::glfw::key::KP_DECIMAL;
+        case GLFW_KEY_KP_DIVIDE:     return mope::glfw::key::KP_DIVIDE;
+        case GLFW_KEY_KP_MULTIPLY:   return mope::glfw::key::KP_MULTIPLY;
+        case GLFW_KEY_KP_SUBTRACT:   return mope::glfw::key::KP_SUBTRACT;
+        case GLFW_KEY_KP_ADD:        return mope::glfw::key::KP_ADD;
+        case GLFW_KEY_KP_ENTER:      return mope::glfw::key::KP_ENTER;
+        case GLFW_KEY_KP_EQUAL:      return mope::glfw::key::KP_EQUAL;
+        case GLFW_KEY_LEFT_SHIFT:    return mope::glfw::key::LEFT_SHIFT;
+        case GLFW_KEY_LEFT_CONTROL:  return mope::glfw::key::LEFT_CONTROL;
+        case GLFW_KEY_LEFT_ALT:      return mope::glfw::key::LEFT_ALT;
+        case GLFW_KEY_LEFT_SUPER:    return mope::glfw::key::LEFT_SUPER;
+        case GLFW_KEY_RIGHT_SHIFT:   return mope::glfw::key::RIGHT_SHIFT;
+        case GLFW_KEY_RIGHT_CONTROL: return mope::glfw::key::RIGHT_CONTROL;
+        case GLFW_KEY_RIGHT_ALT:     return mope::glfw::key::RIGHT_ALT;
+        case GLFW_KEY_RIGHT_SUPER:   return mope::glfw::key::RIGHT_SUPER;
+        case GLFW_KEY_MENU:          return mope::glfw::key::MENU;
+        default:                     return std::nullopt;
+        }
     }
 
     void throw_glfw_error(int code, const char* description)
