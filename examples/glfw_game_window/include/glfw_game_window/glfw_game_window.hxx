@@ -45,24 +45,27 @@ namespace mope::glfw
         MENU,
     };
 
+    enum class window_mode
+    {
+        windowed,
+        fullscreen,
+    };
+
+    enum class cursor_mode
+    {
+        normal,
+        hidden,
+        disabled,
+    };
+
     class window : public I_game_window
     {
     public:
-        enum class mode
-        {
-            windowed,
-            fullscreen,
-        };
-
-        enum class cursor_mode
-        {
-            normal,
-            hidden,
-            disabled,
-        };
-
         window(
-            int initial_width, int initial_height, char const* title, mode mode = mode::windowed
+            char const* title,
+            vec2i dimensions,
+            window_mode mode,
+            gl::version_and_profile profile
         );
         ~window() noexcept;
         window(window&&) noexcept;

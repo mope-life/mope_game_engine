@@ -14,13 +14,17 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <unordered_map>
 
 namespace
 {
     auto remap_glfw_key(int key) -> std::optional<mope::glfw::key>;
     void throw_glfw_error(int code, const char* description);
-    static auto create_glfw_window(int width, int height, char const* title, mope::glfw::window::mode mode) -> GLFWwindow*;
+    static auto create_glfw_window(
+        char const* title,
+        mope::vec2i dimensions,
+        mope::glfw::window_mode mode,
+        mope::gl::version_and_profile profile
+    ) -> GLFWwindow*;
 } // namespace
 
 namespace mope::glfw
@@ -41,7 +45,6 @@ namespace mope::glfw
         context(GLFWwindow* glfw_window);
         ~context();
 
-        GLFWwindow* m_glfw_window;
         GLFWwindow* m_previous_context;
     };
 } // namespace mope::glfw
@@ -50,17 +53,8 @@ mope::glfw::library_lifetime::library_lifetime(lock)
 {
     ::glfwSetErrorCallback(throw_glfw_error);
 
-    if (GLFW_TRUE == glfwInit()) {
-        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-        ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#if defined(DEBUG)
-        ::glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-#endif // defined(DEBUG)
-    }
-    else {
-        throw glfw_error{ "Failed to initialize." };
+    if (GLFW_TRUE != glfwInit()) {
+        throw glfw_error{ "Failed to initialize GLFW." };
     }
 }
 
@@ -81,13 +75,12 @@ auto mope::glfw::library_lifetime::get() -> std::shared_ptr<library_lifetime>
 }
 
 mope::glfw::context::context(GLFWwindow* glfw_window)
-    : m_glfw_window{ glfw_window }
-    , m_previous_context{ glfwGetCurrentContext() }
+    : m_previous_context{ glfwGetCurrentContext() }
 {
-    ::glfwMakeContextCurrent(m_glfw_window);
+    ::glfwMakeContextCurrent(glfw_window);
 
     // Now that the context is current on this thread, we can load GL procs.
-    if (0 == ::gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    if (!::gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         throw glfw_error{ "Failed to load GL proc addresses." };
     }
 }
@@ -97,9 +90,14 @@ mope::glfw::context::~context()
     ::glfwMakeContextCurrent(m_previous_context);
 }
 
-mope::glfw::window::window(int width, int height, char const* title, mode mode)
+mope::glfw::window::window(
+    char const* title,
+    vec2i dimensions,
+    window_mode mode,
+    gl::version_and_profile profile
+)
     : m_glfw{ library_lifetime::get() }
-    , m_impl{ create_glfw_window(width, height, title, mode) }
+    , m_impl{ create_glfw_window(title, dimensions, mode, profile) }
     , m_client_size{ }
     , m_cursor_pos{ }
     , m_cursor_deltas{ }
@@ -415,11 +413,33 @@ namespace
         throw mope::glfw_error{ what };
     }
 
-    auto create_glfw_window(int width, int height, char const* title, mope::glfw::window::mode mode) -> GLFWwindow*
+    auto create_glfw_window(
+        char const* title,
+        mope::vec2i dimensions,
+        mope::glfw::window_mode mode,
+        mope::gl::version_and_profile profile
+    ) -> GLFWwindow*
     {
         auto monitor
-            = mope::glfw::window::mode::fullscreen == mode ? ::glfwGetPrimaryMonitor() : nullptr;
-        return ::glfwCreateWindow(width, height, title, monitor, nullptr);
+            = mope::glfw::window_mode::fullscreen == mode ? ::glfwGetPrimaryMonitor() : nullptr;
+
+        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, profile.major_version);
+        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, profile.minor_version);
+
+        if (profile.major_version < 3 || profile.major_version == 3 && profile.minor_version < 2) {
+            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+        }
+        else if (profile.profile == profile.core) {
+            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        }
+        else if (profile.profile == profile.compat) {
+            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
     }
 
+#if defined(DEBUG)
+        ::glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+#endif // defined(DEBUG)
+
+        return ::glfwCreateWindow(dimensions.x(), dimensions.y(), title, monitor, nullptr);
+    }
 } // namespace

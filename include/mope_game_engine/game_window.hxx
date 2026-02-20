@@ -5,6 +5,19 @@
 #include <memory>
 #include <bitset>
 
+namespace mope::gl
+{
+    struct version_and_profile
+    {
+        int major_version;
+        int minor_version;
+        enum {
+            core,
+            compat,
+        } profile;
+    };
+}
+
 namespace mope
 {
     struct gl_context

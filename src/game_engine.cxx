@@ -27,6 +27,15 @@
 
 #define LOG_FPS true
 
+auto mope::I_game_engine::opengl_version_and_profile() -> gl::version_and_profile
+{
+    return gl::version_and_profile{
+        .major_version = 4,
+        .minor_version = 6,
+        .profile = gl::version_and_profile::core
+    };
+}
+
 namespace mope
 {
     class game_engine final : public I_game_engine
