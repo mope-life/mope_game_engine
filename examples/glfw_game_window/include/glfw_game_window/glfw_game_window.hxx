@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_window.hxx"
 #include "mope_vec/mope_vec.hxx"
 
@@ -65,9 +66,9 @@ namespace mope::glfw
             char const* title,
             vec2i dimensions,
             window_mode mode,
-            gl::version_and_profile profile
+            gl::version_and_profile profile = I_game_engine::opengl_version_and_profile()
         );
-        ~window() noexcept;
+        ~window() noexcept = default;
         window(window&&) noexcept;
         window& operator=(window&&) noexcept;
         window(window const&) = delete;
@@ -99,8 +100,9 @@ namespace mope::glfw
         void handle_resize(int width, int height);
         void handle_cursor_pos(double xpos, double ypos);
 
-        std::shared_ptr<void> m_glfw;
-        void* m_impl;
+        struct imp;
+        std::shared_ptr<imp> m_imp;
+
         vec2i m_client_size;
         vec2f m_cursor_pos;
         vec2f m_cursor_deltas;

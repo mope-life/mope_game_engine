@@ -17,29 +17,14 @@
 
 namespace
 {
+    void init_glfw();
+    void deinit_glfw();
     auto remap_glfw_key(int key) -> std::optional<mope::glfw::key>;
     void throw_glfw_error(int code, const char* description);
-    static auto create_glfw_window(
-        char const* title,
-        mope::vec2i dimensions,
-        mope::glfw::window_mode mode,
-        mope::gl::version_and_profile profile
-    ) -> GLFWwindow*;
 } // namespace
 
 namespace mope::glfw
 {
-    class library_lifetime
-    {
-        struct lock {};
-
-    public:
-        library_lifetime(lock);
-        ~library_lifetime();
-
-        static auto get() -> std::shared_ptr<library_lifetime>;
-    };
-
     struct context : public gl_context
     {
         context(GLFWwindow* glfw_window);
@@ -47,32 +32,28 @@ namespace mope::glfw
 
         GLFWwindow* m_previous_context;
     };
+
+    struct window::imp
+    {
+        imp(
+            char const* title,
+            vec2i dimensions,
+            glfw::window_mode mode,
+            gl::version_and_profile profile
+        );
+        ~imp();
+
+        imp(imp const&) = delete;
+        auto operator=(imp const&) -> imp& = delete;
+
+        operator GLFWwindow*();
+
+        GLFWwindow* m_glfw_window;
+        static int s_glfw_use_count;
+    };
+
+    int window::imp::s_glfw_use_count = 0;
 } // namespace mope::glfw
-
-mope::glfw::library_lifetime::library_lifetime(lock)
-{
-    ::glfwSetErrorCallback(throw_glfw_error);
-
-    if (GLFW_TRUE != glfwInit()) {
-        throw glfw_error{ "Failed to initialize GLFW." };
-    }
-}
-
-mope::glfw::library_lifetime::~library_lifetime()
-{
-    ::glfwTerminate();
-}
-
-auto mope::glfw::library_lifetime::get() -> std::shared_ptr<library_lifetime>
-{
-    static auto s_this = std::weak_ptr<library_lifetime>{};
-    auto ptr = s_this.lock();
-    if (!ptr) {
-        ptr = std::make_shared<library_lifetime>(lock{});
-        s_this = ptr;
-    }
-    return ptr;
-}
 
 mope::glfw::context::context(GLFWwindow* glfw_window)
     : m_previous_context{ glfwGetCurrentContext() }
@@ -90,43 +71,87 @@ mope::glfw::context::~context()
     ::glfwMakeContextCurrent(m_previous_context);
 }
 
+mope::glfw::window::imp::imp(
+    char const* title,
+    vec2i dimensions,
+    glfw::window_mode mode,
+    gl::version_and_profile profile)
+{
+    if (++s_glfw_use_count == 1) {
+        init_glfw();
+    }
+
+    auto monitor
+        = mope::glfw::window_mode::fullscreen == mode ? ::glfwGetPrimaryMonitor() : nullptr;
+
+    ::glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, profile.major_version);
+    ::glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, profile.minor_version);
+
+    if (profile.major_version < 3 || profile.major_version == 3 && profile.minor_version < 2) {
+        ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+    }
+    else if (profile.profile == profile.core) {
+        ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    }
+    else if (profile.profile == profile.compat) {
+        ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+    }
+
+#if defined(DEBUG)
+    ::glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+#endif // defined(DEBUG)
+
+    if (!(m_glfw_window
+        = ::glfwCreateWindow(dimensions.x(), dimensions.y(), title, monitor, nullptr)))
+    {
+        throw glfw_error{ "Failed to create a GLFW window." };
+    }
+}
+
+mope::glfw::window::imp::~imp()
+{
+    ::glfwDestroyWindow(m_glfw_window);
+
+    if (--s_glfw_use_count == 0) {
+        deinit_glfw();
+    }
+}
+
+mope::glfw::window::imp::operator GLFWwindow* ()
+{
+    return m_glfw_window;
+}
+
 mope::glfw::window::window(
     char const* title,
     vec2i dimensions,
     window_mode mode,
     gl::version_and_profile profile
 )
-    : m_glfw{ library_lifetime::get() }
-    , m_impl{ create_glfw_window(title, dimensions, mode, profile) }
+    : m_imp{ std::make_shared<imp>(title, dimensions, mode, profile) }
     , m_client_size{ }
     , m_cursor_pos{ }
     , m_cursor_deltas{ }
     , m_key_states{ }
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-
-    if (!glfw_window) {
-        throw glfw_error{ "Failed to create a GLFW window." };
-    }
-
-    ::glfwSetWindowUserPointer(glfw_window, this);
+    ::glfwSetWindowUserPointer(*m_imp, this);
 
     ::glfwSetKeyCallback(
-        glfw_window,
+        *m_imp,
         [](GLFWwindow* glfw_window, int k, int, int action, int) {
             auto user_ptr = static_cast<window*>(::glfwGetWindowUserPointer(glfw_window));
             user_ptr->handle_key(k, action);
         });
 
     ::glfwSetFramebufferSizeCallback(
-        glfw_window,
+        *m_imp,
         [](GLFWwindow* glfw_window, int width, int height) {
             auto user_ptr = static_cast<window*>(::glfwGetWindowUserPointer(glfw_window));
             user_ptr->handle_resize(width, height);
         });
 
     ::glfwSetCursorPosCallback(
-        glfw_window,
+        *m_imp,
         [](GLFWwindow* glfw_window, double xpos, double ypos) {
             auto user_ptr = static_cast<window*>(::glfwGetWindowUserPointer(glfw_window));
             user_ptr->handle_cursor_pos(xpos, ypos);
@@ -135,23 +160,14 @@ mope::glfw::window::window(
     // Get the initial framebuffer dimensions
     int initial_width = 0;
     int initial_height = 0;
-    ::glfwGetFramebufferSize(glfw_window, &initial_width, &initial_height);
+    ::glfwGetFramebufferSize(*m_imp, &initial_width, &initial_height);
     handle_resize(initial_width, initial_height);
 
     ::glfwPollEvents();
 }
 
-mope::glfw::window::~window()
-{
-    if (nullptr != m_impl) {
-        auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-        ::glfwDestroyWindow(glfw_window);
-    }
-}
-
 mope::glfw::window::window(window&& that) noexcept
-    : m_glfw{ }
-    , m_impl{ nullptr }
+    : m_imp{ }
     , m_client_size{ }
     , m_cursor_pos{ }
     , m_cursor_deltas{ }
@@ -169,43 +185,39 @@ auto mope::glfw::window::operator=(window&& that) noexcept -> window&
 void mope::glfw::window::swap(window& that)
 {
     using std::swap;
-    swap(m_glfw, that.m_glfw);
-    swap(m_impl, that.m_impl);
+    swap(m_imp, that.m_imp);
     swap(m_client_size, that.m_client_size);
     swap(m_cursor_pos, that.m_cursor_pos);
     swap(m_cursor_deltas, that.m_cursor_deltas);
     swap(m_key_states, that.m_key_states);
 
-    if (nullptr != m_impl) {
-        ::glfwSetWindowUserPointer(static_cast<GLFWwindow*>(m_impl), this);
+    if (m_imp) {
+        ::glfwSetWindowUserPointer(*m_imp, this);
     }
 
-    if (nullptr != that.m_impl) {
-        ::glfwSetWindowUserPointer(static_cast<GLFWwindow*>(that.m_impl), &that);
+    if (that.m_imp) {
+        ::glfwSetWindowUserPointer(*that.m_imp, &that);
     }
 }
 
 void mope::glfw::window::set_cursor_mode(cursor_mode mode)
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-
     switch (mode) {
     case cursor_mode::normal:
-        ::glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        ::glfwSetInputMode(*m_imp, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         break;
     case cursor_mode::hidden:
-        ::glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+        ::glfwSetInputMode(*m_imp, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
         break;
     case cursor_mode::disabled:
-        ::glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        ::glfwSetInputMode(*m_imp, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         break;
     }
 }
 
 auto mope::glfw::window::get_context() -> std::unique_ptr<gl_context>
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-    return std::make_unique<context>(glfw_window);
+    return std::make_unique<context>(*m_imp);
 }
 
 void mope::glfw::window::process_inputs()
@@ -215,20 +227,17 @@ void mope::glfw::window::process_inputs()
 
 void mope::glfw::window::swap()
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-    ::glfwSwapBuffers(glfw_window);
+    ::glfwSwapBuffers(*m_imp);
 }
 
 auto mope::glfw::window::wants_to_close() const -> bool
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-    return ::glfwWindowShouldClose(glfw_window);
+    return ::glfwWindowShouldClose(*m_imp);
 }
 
 void mope::glfw::window::close(bool should_close)
 {
-    auto glfw_window = static_cast<GLFWwindow*>(m_impl);
-    ::glfwSetWindowShouldClose(glfw_window, should_close ? GLFW_TRUE : GLFW_FALSE);
+    ::glfwSetWindowShouldClose(*m_imp, should_close ? GLFW_TRUE : GLFW_FALSE);
 }
 
 auto mope::glfw::window::key_states() const -> std::bitset<256>
@@ -278,10 +287,29 @@ void mope::glfw::window::handle_cursor_pos(double xpos, double ypos)
 
 namespace
 {
+    void init_glfw()
+    {
+        ::glfwSetErrorCallback(throw_glfw_error);
+        if (GLFW_TRUE != glfwInit()) {
+            throw mope::glfw_error{ "Failed to initialize GLFW." };
+        }
+    }
+
+    void deinit_glfw()
+    {
+        ::glfwTerminate();
+    }
+
+    void throw_glfw_error(int code, const char* description)
+    {
+        std::string what = "Error code " + std::to_string(code) + ": " + description;
+        throw mope::glfw_error{ what };
+    }
+
     auto remap_glfw_key(int glfw_key) -> std::optional<mope::glfw::key>
     {
         switch (glfw_key)
-    {
+        {
         case GLFW_KEY_UNKNOWN:       return mope::glfw::key::UNKNOWN;
         case GLFW_KEY_SPACE:         return mope::glfw::key::SPACE;
         case GLFW_KEY_APOSTROPHE:    return mope::glfw::key::APOSTROPHE;
@@ -405,41 +433,5 @@ namespace
         case GLFW_KEY_MENU:          return mope::glfw::key::MENU;
         default:                     return std::nullopt;
         }
-    }
-
-    void throw_glfw_error(int code, const char* description)
-    {
-        std::string what = "Error code " + std::to_string(code) + ": " + description;
-        throw mope::glfw_error{ what };
-    }
-
-    auto create_glfw_window(
-        char const* title,
-        mope::vec2i dimensions,
-        mope::glfw::window_mode mode,
-        mope::gl::version_and_profile profile
-    ) -> GLFWwindow*
-    {
-        auto monitor
-            = mope::glfw::window_mode::fullscreen == mode ? ::glfwGetPrimaryMonitor() : nullptr;
-
-        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, profile.major_version);
-        ::glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, profile.minor_version);
-
-        if (profile.major_version < 3 || profile.major_version == 3 && profile.minor_version < 2) {
-            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
-        }
-        else if (profile.profile == profile.core) {
-            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        }
-        else if (profile.profile == profile.compat) {
-            ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
-    }
-
-#if defined(DEBUG)
-        ::glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-#endif // defined(DEBUG)
-
-        return ::glfwCreateWindow(dimensions.x(), dimensions.y(), title, monitor, nullptr);
     }
 } // namespace
