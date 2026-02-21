@@ -16,22 +16,42 @@ namespace mope::gl
             compat,
         } profile;
     };
+
+    /// An object that represents the lifetime of a GL context.
+    ///
+    /// After this object is constructed, a GL context should be current on
+    /// the calling thread for at least as long as this object exists.
+    struct context
+    {
+        virtual ~context() = default;
+    };
 }
 
 namespace mope
 {
-    struct gl_context
-    {
-        virtual ~gl_context() = default;
-    };
-
     class I_game_window
     {
     public:
         virtual ~I_game_window() = default;
 
-        virtual auto get_context() -> std::unique_ptr<gl_context> = 0;
+        /// Return an OpenGL context.
+        ///
+        /// @sa mope::gl::context
+        virtual auto get_context() -> std::unique_ptr<gl::context> = 0;
+
+        /// Return a function that will be used to load GL procedures.
+        ///
+        /// e.g. `glfwGetProcAddress`
+        virtual auto get_gl_loader() -> void* (*)(char const*) = 0;
+
+        /// Process all inputs to this window since the last time this function
+        /// was called.
+        ///
+        /// This function is called in a loop by the game engine, so that the
+        /// window can keep its input state current.
         virtual void process_inputs() = 0;
+
+        /// Present graphics to the screen.
         virtual void swap() = 0;
 
         /// Return whether the window is trying to close.

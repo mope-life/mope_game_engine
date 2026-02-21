@@ -8,20 +8,6 @@ set(
 
 add_library(mope_game_engine STATIC)
 
-target_compile_definitions(
-    mope_game_engine
-
-    # Export GLAD symbols for consumers.
-    # We expect the `I_window` implementation to come up with its own GL context,
-    # so at the very least it has to call `gladLoadGLLoader()`.
-    # It's probably possible to abstract this away in the future.
-    PUBLIC
-        GLAD_GLAPI_EXPORT
-
-    PRIVATE
-        GLAD_GLAPI_EXPORT_BUILD
-)
-
 target_compile_options(
     mope_game_engine
 
@@ -32,8 +18,9 @@ target_compile_options(
 target_link_libraries(
     mope_game_engine
 
-    PUBLIC
+    PRIVATE
         freetype
+        glad
 )
 
 add_subdirectory("external")

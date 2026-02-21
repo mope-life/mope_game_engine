@@ -1,11 +1,6 @@
 #include "glfw_game_window/glfw_game_window.hxx"
 
-// clang-format off
-// These headers must be in order
-#include "glad/glad.h"
 #include "GLFW/glfw3.h"
-// clang-format on
-
 #include "mope_game_engine/game_window.hxx"
 #include "mope_vec/mope_vec.hxx"
 
@@ -25,7 +20,7 @@ namespace
 
 namespace mope::glfw
 {
-    struct context : public gl_context
+    struct context : public gl::context
     {
         context(GLFWwindow* glfw_window);
         ~context();
@@ -59,11 +54,6 @@ mope::glfw::context::context(GLFWwindow* glfw_window)
     : m_previous_context{ glfwGetCurrentContext() }
 {
     ::glfwMakeContextCurrent(glfw_window);
-
-    // Now that the context is current on this thread, we can load GL procs.
-    if (!::gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        throw glfw_error{ "Failed to load GL proc addresses." };
-    }
 }
 
 mope::glfw::context::~context()
@@ -217,9 +207,15 @@ void mope::glfw::window::set_cursor_mode(cursor_mode mode)
     }
 }
 
-auto mope::glfw::window::get_context() -> std::unique_ptr<gl_context>
+auto mope::glfw::window::get_context() -> std::unique_ptr<gl::context>
 {
     return std::make_unique<context>(*m_imp);
+}
+
+auto mope::glfw::window::get_gl_loader() -> void* (*)(char const*)
+{
+    // We're putting the "fine" in "undefined behavior"
+    return reinterpret_cast<void* (*)(char const*)>(&::glfwGetProcAddress);
 }
 
 void mope::glfw::window::process_inputs()

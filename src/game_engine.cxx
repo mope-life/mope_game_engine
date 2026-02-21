@@ -145,12 +145,19 @@ void mope::game_engine::add_scene(std::unique_ptr<game_scene> scene)
 
 void mope::game_engine::run(I_game_window& window, I_logger* logger)
 {
+    // Get an OpenGL context on this thread.
     auto context = window.get_context();
     if (!context) {
         throw game_engine_error{ "Window returned null OpenGL context." };
     }
 
-    // We will try to ensure that our OpenGL resources are disposed of even if we end on an error.
+    // Now that the context is current on this thread, we can load GL procs.
+    if (!::gladLoadGLLoader(window.get_gl_loader())) {
+        throw game_engine_error{ "Failed to load GL proc addresses." };
+    }
+
+    // We will try to ensure that our OpenGL resources are disposed of even if
+    // we end on an error.
     auto resources = finally {
         [this]() {
             for (auto&& scene : m_scenes) {

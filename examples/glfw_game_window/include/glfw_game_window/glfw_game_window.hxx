@@ -82,7 +82,8 @@ namespace mope::glfw
         void set_cursor_mode(cursor_mode mode);
 
         // Implementation of mope::I_game_window.
-        auto get_context() -> std::unique_ptr<gl_context> override;
+        auto get_context() -> std::unique_ptr<gl::context> override;
+        auto get_gl_loader() -> void* (*)(char const*) override;
         void process_inputs() override;
         void swap() override;
         auto wants_to_close() const -> bool override;
