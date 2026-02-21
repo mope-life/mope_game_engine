@@ -77,7 +77,9 @@ mope::glfw::window::imp::imp(
     ::glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, profile.major_version);
     ::glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, profile.minor_version);
 
-    if (profile.major_version < 3 || profile.major_version == 3 && profile.minor_version < 2) {
+    if (profile.major_version < 3
+        || (profile.major_version == 3 && profile.minor_version < 2))
+    {
         ::glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
     }
     else if (profile.profile == profile.core) {
