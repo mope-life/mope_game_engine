@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mope_game_engine/game_engine.hxx"
 #include "mope_game_engine/game_window.hxx"
 #include "mope_vec/mope_vec.hxx"
 
@@ -45,30 +46,31 @@ namespace mope::glfw
         MENU,
     };
 
+    enum class window_mode
+    {
+        windowed,
+        fullscreen,
+    };
+
+    enum class cursor_mode
+    {
+        normal,
+        hidden,
+        disabled,
+    };
+
     class window : public I_game_window
     {
     public:
-        enum class mode
-        {
-            windowed,
-            fullscreen,
-        };
-
-        enum class cursor_mode
-        {
-            normal,
-            hidden,
-            disabled,
-        };
-
         window(
-            int initial_width, int initial_height, char const* title, mode mode = mode::windowed
+            char const* title,
+            vec2i dimensions,
+            window_mode mode,
+            gl::version_and_profile profile = I_game_engine::opengl_version_and_profile()
         );
         ~window() noexcept;
         window(window&&) noexcept;
         window& operator=(window&&) noexcept;
-        window(window const&) = delete;
-        window& operator=(window const&) = delete;
 
         void swap(window&);
 
@@ -80,7 +82,8 @@ namespace mope::glfw
         void set_cursor_mode(cursor_mode mode);
 
         // Implementation of mope::I_game_window.
-        auto get_context() -> std::unique_ptr<gl_context> override;
+        auto get_context() -> std::unique_ptr<gl::context> override;
+        auto get_gl_loader() -> void* (*)(char const*) override;
         void process_inputs() override;
         void swap() override;
         auto wants_to_close() const -> bool override;
@@ -96,8 +99,9 @@ namespace mope::glfw
         void handle_resize(int width, int height);
         void handle_cursor_pos(double xpos, double ypos);
 
-        std::shared_ptr<void> m_glfw;
-        void* m_impl;
+        struct imp;
+        std::unique_ptr<imp> m_imp;
+
         vec2i m_client_size;
         vec2f m_cursor_pos;
         vec2f m_cursor_deltas;

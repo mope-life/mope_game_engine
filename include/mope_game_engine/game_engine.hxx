@@ -11,6 +11,11 @@ namespace mope
     class I_game_window;
     class game_scene;
     struct font;
+
+    namespace gl
+    {
+        struct version_and_profile;
+    }
 } // namespace mope
 
 namespace mope
@@ -21,6 +26,8 @@ namespace mope
         ~I_game_engine() = default;
 
     public:
+        static auto opengl_version_and_profile() -> gl::version_and_profile;
+
         virtual void destroy() = 0;
 
         virtual void set_tick_rate(double hz_rate) = 0;

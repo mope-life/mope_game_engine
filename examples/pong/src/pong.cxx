@@ -47,11 +47,11 @@ namespace
     {
         try {
             auto window = mope::glfw::window{
-                static_cast<int>(OrthoWidth),
-                static_cast<int>(OrthoHeight),
-                "Pong"
+                "Pong",
+                mope::vec2i{ static_cast<int>(OrthoWidth), static_cast<int>(OrthoHeight) },
+                mope::glfw::window_mode::windowed
             };
-            window.set_cursor_mode(mope::glfw::window::cursor_mode::disabled);
+            window.set_cursor_mode(mope::glfw::cursor_mode::disabled);
 
             auto engine = mope::game_engine_create();
             engine->set_tick_rate(60.0);

@@ -7,7 +7,6 @@ target_sources(
         "font.cxx"
         "game_engine.cxx"
         "game_scene.cxx"
-        "glad/glad.c"
         "resource_id.cxx"
         "shader.hxx" "shader.cxx"
         "sprite_renderer.hxx" "sprite_renderer.cxx"
